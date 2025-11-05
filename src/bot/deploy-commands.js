@@ -4,7 +4,6 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 const { REST, Routes } = require('discord.js');
 const fs = require('node:fs');
 
-// Note: sync-bot-config is called by the startup script, not here.
 
 function deploy() {
     let config;

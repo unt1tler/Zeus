@@ -1,7 +1,7 @@
 {
-  "enabled": false,
-  "clientId": "",
-  "guildId": "",
+  "enabled": true,
+  "clientId": "1323712713645359215",
+  "guildId": "829037998552121300",
   "botSecret": "",
   "adminIds": [],
   "commands": {
