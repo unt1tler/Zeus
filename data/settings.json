@@ -1,0 +1,107 @@
+{
+  "apiKey": "",
+  "panelUrl": "",
+  "adminApiEnabled": false,
+  "clientPanel": {
+    "enabled": false,
+    "accentColor": "#000000"
+  },
+  "adminApiEndpoints": {
+    "getLicenses": true,
+    "createLicense": true,
+    "updateLicense": true,
+    "deleteLicense": true,
+    "updateIdentities": true,
+    "renewLicense": true,
+    "manageTeam": true,
+    "addSubUser": true,
+    "removeSubUser": true
+  },
+  "validationResponse": {
+    "requireDiscordId": true,
+    "customSuccessMessage": {
+      "enabled": true,
+      "message": "License key is valid"
+    },
+    "license": {
+      "enabled": false,
+      "fields": {
+        "license_key": true,
+        "status": true,
+        "expires_at": true,
+        "issue_date": true,
+        "max_ips": true,
+        "used_ips": true
+      }
+    },
+    "customer": {
+      "enabled": false,
+      "fields": {
+        "id": true,
+        "discord_id": true,
+        "customer_since": true
+      }
+    },
+    "product": {
+      "enabled": false,
+      "fields": {
+        "id": true,
+        "name": true,
+        "enabled": true
+      }
+    }
+  },
+  "builtByBitWebhookSecret": {
+    "enabled": false,
+    "secret": "",
+    "disableIpProtection": false,
+    "maxIps": 1,
+    "enableHwidProtection": false,
+    "maxHwids": 1
+  },
+  "builtByBitPlaceholder": {
+    "enabled": false,
+    "secret": "",
+    "disableIpProtection": false,
+    "maxIps": 1,
+    "enableHwidProtection": false,
+    "maxHwids": 1
+  },
+  "discordBot": {
+    "enabled": false,
+    "clientId": "",
+    "guildId": "",
+    "botSecret": "",
+    "adminIds": [],
+    "commands": {
+      "viewUser": true,
+      "checkLicenses": true,
+      "searchLicense": true,
+      "deactivate": true,
+      "createLicense": true,
+      "renewLicense": true,
+      "profile": true,
+      "userLicenses": true,
+      "manageLicense": true,
+      "redeem": true,
+      "linkBuiltbybit": true
+    },
+    "presence": {
+      "status": "online",
+      "activity": {
+        "type": "Watching",
+        "name": "licenses"
+      }
+    }
+  },
+  "logging": {
+    "enabled": false,
+    "webhookUrl": "",
+    "logLicenseCreations": true,
+    "logLicenseUpdates": true,
+    "logBotCommands": true,
+    "logBlacklistActions": true,
+    "logBuiltByBit": true
+  },
+  "discordBotEnabled": true
+}

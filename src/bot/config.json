@@ -1,0 +1,27 @@
+{
+  "enabled": false,
+  "clientId": "",
+  "guildId": "",
+  "botSecret": "",
+  "adminIds": [],
+  "commands": {
+    "viewUser": true,
+    "checkLicenses": true,
+    "searchLicense": true,
+    "deactivate": true,
+    "createLicense": true,
+    "renewLicense": true,
+    "profile": true,
+    "userLicenses": true,
+    "manageLicense": true,
+    "redeem": true,
+    "linkBuiltbybit": true
+  },
+  "presence": {
+    "status": "online",
+    "activity": {
+      "type": "Watching",
+      "name": "licenses"
+    }
+  }
+}

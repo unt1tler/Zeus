@@ -1,0 +1,22 @@
+{
+  "placeholderImages": [
+    {
+      "id": "prod_1",
+      "description": "Placeholder for a software box",
+      "imageUrl": "https://images.unsplash.com/photo-1698376621066-8bdd073dcf4a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxzb2Z0d2FyZSUyMGJveHxlbnwwfHx8fDE3NjE3OTkwMzl8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "software box"
+    },
+    {
+      "id": "prod_2",
+      "description": "Placeholder for a digital service icon",
+      "imageUrl": "https://images.unsplash.com/photo-1683029240907-1b195812422c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw4fHxkaWdpdGFsJTIwaWNvbnxlbnwwfHx8fDE3NjE4MjA0MjZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "digital icon"
+    },
+    {
+      "id": "prod_3",
+      "description": "Placeholder for an app logo",
+      "imageUrl": "https://images.unsplash.com/photo-1690138871287-02b2fc3b87c2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxhcHAlMjBsb2dvfGVufDB8fHx8MTc2MTcyNjQ1OHww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "app logo"
+    }
+  ]
+}

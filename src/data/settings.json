@@ -1,0 +1,114 @@
+
+{
+  "apiKey": "LF-ADMIN-35cc9fb1-4610-42f8-822c-5dda7b79ff70",
+  "adminApiEnabled": true,
+  "discordBot": {
+    "enabled": true,
+    "clientId": "1323712713645359215",
+    "guildId": "829037998552121300",
+    "adminIds": [],
+    "commands": {
+      "viewUser": true,
+      "checkLicenses": true,
+      "searchLicense": true,
+      "deactivate": true,
+      "createLicense": true,
+      "renewLicense": true,
+      "profile": true,
+      "userLicenses": true,
+      "manageLicense": true,
+      "redeem": true,
+      "linkBuiltbybit": true
+    },
+    "presence": {
+      "status": "online",
+      "activity": {
+        "type": "Competing",
+        "name": "licenses"
+      }
+    },
+    "lastSync": "2025-11-04T04:03:02.283Z",
+    "publicKey": "e153cec3af5e67321ec556595eca56ee29b78e0404e219e7b39b01338dbdff47",
+    "botSecret": "fiFbN7GZyx17dIfEN3xZFMy-rUfwZuPf"
+  },
+  "adminApiEndpoints": {
+    "getLicenses": true,
+    "createLicense": true,
+    "updateLicense": true,
+    "deleteLicense": true,
+    "updateIdentities": true,
+    "renewLicense": true,
+    "manageTeam": true,
+    "addSubUser": true,
+    "removeSubUser": true
+  },
+  "panelUrl": "https://6000-firebase-studio-1761819702592.cluster-wurh6gchdjcjmwrw2tqtufvhss.cloudworkstations.dev",
+  "validationResponse": {
+    "includeLicense": false,
+    "includeCustomer": false,
+    "includeProduct": false,
+    "customSuccessMessage": {
+      "enabled": false,
+      "message": "POPPERS"
+    },
+    "license": {
+      "enabled": false,
+      "fields": {
+        "license_key": "true",
+        "status": "true",
+        "expires_at": "true",
+        "issue_date": "true",
+        "max_ips": "true",
+        "used_ips": "true"
+      }
+    },
+    "customer": {
+      "enabled": false,
+      "fields": {
+        "id": "true",
+        "discord_id": "true",
+        "customer_since": "true"
+      }
+    },
+    "product": {
+      "enabled": false,
+      "fields": {
+        "id": "true",
+        "name": "true",
+        "enabled": "true"
+      }
+    },
+    "requireDiscordId": false
+  },
+  "builtByBitWebhookSecret": {
+    "enabled": false,
+    "secret": "",
+    "disableIpProtection": false,
+    "maxIps": 1,
+    "enableHwidProtection": false,
+    "maxHwids": 1
+  },
+  "builtByBitPlaceholder": {
+    "secret": "q122313124345314",
+    "disableIpProtection": true,
+    "maxIps": 1,
+    "enableHwidProtection": false,
+    "maxHwids": 1,
+    "enabled": false
+  },
+  "logging": {
+    "enabled": true,
+    "webhookUrl": "https://discord.com/api/webhooks/1435173834499031102/JMNe1jTLVNW9If3i2w4JtrIsyfDDOdPSZdp7JHNhvjlANdfGFGz0wAMIIZN3fNc42P9i",
+    "logLicenseCreations": true,
+    "logLicenseUpdates": true,
+    "logBotCommands": true,
+    "logBlacklistActions": true,
+    "logBuiltByBit": true
+  },
+  "discordBotEnabled": true,
+  "clientPanel": {
+    "enabled": true,
+    "accentColor": "#0062ff"
+  },
+  "clientPanelEnabled": true
+}
