@@ -21,9 +21,15 @@ export function Logo(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function DiscordLoginIcon(props: SVGProps<SVGSVGElement>) {
+    return (
+        <Image src="https://i.ibb.co/JRtVVCd0/images-2-removebg-preview.png" alt="Discord Icon" width={20} height={20} {...props} />
+    )
+}
+
 export function DiscordIcon(props: SVGProps<SVGSVGElement>) {
     return (
-        <Image src="https://i.ibb.co/wY6YyM3/discord-logo-white.png" alt="Discord Icon" width={20} height={20} {...props} />
+        <Image src="https://icon2.cleanpng.com/20240209/evz/transparent-discord-icon-blue-face-with-wide-open-eyes-and-1710882578305.webp" alt="Discord Icon" width={16} height={16} {...props} />
     )
 }
 

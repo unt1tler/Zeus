@@ -1,5 +1,5 @@
 
-import { DiscordIcon } from "@/components/icons";
+import { DiscordLoginIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { getSettings } from "@/lib/data";
@@ -54,7 +54,7 @@ export default async function LoginPage({ searchParams }: { searchParams: { erro
 
         <Button asChild className="w-full bg-[#5865F2] text-white hover:bg-[#4752C4]">
           <Link href="/api/auth/discord/redirect">
-            <DiscordIcon className="mr-2 h-5 w-5" />
+            <DiscordLoginIcon className="mr-2 h-5 w-5" />
             Authorize with Discord
           </Link>
         </Button>
