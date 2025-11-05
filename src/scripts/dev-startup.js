@@ -73,7 +73,7 @@ function startBotProcess() {
             fs.writeFileSync(pidFilePath, botProcess.pid.toString());
             console.log(`[Dev Startup] Bot process started with PID: ${botProcess.pid}`);
             
-            // In dev, we don't unref, we'll handle cleanup on exit
+           // Flushing the Records on the get go before killing the process
             botProcess.on('exit', (code) => {
                 console.log(`[Dev Startup] Bot process exited with code ${code}`);
                 if (fs.existsSync(pidFilePath)) {
