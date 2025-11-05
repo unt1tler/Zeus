@@ -3,11 +3,10 @@
     src="https://user-gen-media-assets.s3.amazonaws.com/seedream_images/a2746fa4-428d-48a0-b1e5-0264501d7ece.png" 
     alt="Zeus Logo" 
     width="300"
-    height="300"
   />
   
   <h1>Zeus</h1>
-  <p><i>A powerful, open-source license management system built with Next.js and Tailwind CSS.</i></p>
+  <p>A license management system built with Next.js and Tailwind CSS.</p>
 
   <a href="https://discord.gg/CR7s2aEf9T">
     <img src="https://img.shields.io/discord/829037998552121300?label=Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge" alt="Discord">
@@ -24,252 +23,252 @@
   <a href="https://github.com/unt1tler/Zeus/issues">
     <img src="https://img.shields.io/github/issues/unt1tler/Zeus?style=for-the-badge&color=red" alt="Issues">
   </a>
-  
-  <br/>
-  <br/>
-  
-  <a href="#-getting-started">Getting Started</a>
-  •
-  <a href="#-features">Features</a>
-  •
-  <a href="#-documentation">Documentation</a>
-  •
-  <a href="https://discord.gg/CR7s2aEf9T">Discord</a>
-  
+
+  <hr />
 </div>
 
-<br/>
+## About
 
----
+Zeus is a license management system. It lets you generate, manage, and validate software licenses. The whole thing is built on a JSON file database, so there's no complex setup—just clone it and go.
 
-> **⚠️ Heads Up**
-> 
-> Zeus is fresh off the press and might have a few rough edges here and there. Spotted something weird? [Drop an issue on GitHub](https://github.com/unt1tler/Zeus/issues)—we'd genuinely love to hear about it! 
->
-> Big thanks to Phantom by Buzz.dev for inspiring some of our coolest features.
+**Built with:** Next.js, Tailwind CSS, shadcn/ui, TypeScript
 
----
+## Table of Contents
 
-## 🎯 What's This All About?
+- [Features](#features)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [API](#api)
+- [Database](#database)
+- [Contributing](#contributing)
 
-Zeus exists because managing licenses doesn't need to be complicated. Whether you're selling plugins, distributing software, or managing access to your products, Zeus gives you everything you need without the headache.
+## Features
 
-**Built on solid foundations:** Next.js, Tailwind CSS, shadcn/ui, and TypeScript—a modern stack that's fast, reliable, and actually enjoyable to work with.
+**Core Functionality**
 
-**Zero database setup.** Everything runs on simple JSON files. No servers to configure, no credentials to manage. Just clone, install, and go. When you're ready to scale up, switching to MySQL or PostgreSQL is as simple as editing one file.
+- Product and license management through a clean admin panel
+- Customer profiles with linked accounts and metadata
+- Voucher system for promotional codes
+- IP and HWID blacklisting
+- Detailed validation logs with geographic tracking
+- Public validation API and protected admin REST API
 
-**Made for developers.** Clean code, logical structure, and built to be extended. Adding new features or integrations isn't a nightmare—it's straightforward.
+**Automation**
 
----
+- BuiltByBit integration for automatic license generation
+- Webhook support for purchase-triggered license creation
+- Discord bot with admin and user commands
+- Bot command management from the dashboard
 
-## ✨ Features
+**Customization**
 
-### Run Your Business Like a Pro
+- Configurable validation API responses
+- Toggleable client dashboard and admin features
+- Customizable accent colors for branding
+- Enable/disable specific API endpoints
+- Support for custom database backends
 
-**Product Management** — Create products, set pricing, upload images, and toggle HWID protection with one click. Everything in one clean interface.
+## Installation
 
-**License Control** — Generate, renew, activate, deactivate, or delete licenses. No wrestling with complicated workflows.
+**Requirements**
 
-**Customer Profiles** — See everything about a customer in one place: their licenses, Discord info, sub-user status, and more.
+- Node.js 18 or higher
+- npm or yarn
+- A Discord bot token (create one in the [Discord Developer Portal](https://discord.com/developers/applications))
 
-**Voucher System** — Create redeemable codes for any product with flexible durations. Perfect for promotions, trials, or giveaways.
+**Steps**
 
-**Blacklist Management** — Block specific IPs, HWIDs, or entire accounts to keep troublemakers out.
+1. Clone the repository
 
-**Detailed Logging** — Every validation request gets recorded with IP, HWID, location, and timestamp. Know exactly what's happening.
-
-### Automate Everything
-
-**BuiltByBit Integration** — When someone downloads your product from BuiltByBit for the first time, Zeus automatically creates a lifetime license. Set it once, forget about it.
-
-**Purchase Webhooks** — Hook into BuiltByBit's webhook system to auto-generate licenses the second someone buys your product.
-
-**Validation API** — Check license validity from any application with a simple, secure API. Customize exactly what data gets returned.
-
-**Admin REST API** — Manage licenses, customers, and products programmatically. Perfect for external integrations.
-
-### Keep Your Customers Happy
-
-**Live Dashboard** — Watch everything happen in real-time. Bot status, validation activity, recent events—all updated live.
-
-**Customer Portal** — Your users get their own beautiful dashboard to view keys, manage IPs/HWIDs, and check expiration dates.
-
-**Brand Customization** — Change the accent color to match your brand identity. Make it yours.
-
-**Powerful Discord Bot** 
-- Admins manage licenses and check system status from Discord
-- Users check profiles, manage licenses, and redeem vouchers
-- `/link-builtbybit` command for seamless account linking
-
----
-
-## 🧠 The Smart Stuff
-
-This isn't just another CRUD panel. Here's what makes Zeus actually useful:
-
-**Geographic Intelligence** — Interactive world map showing where your validation requests come from. Understand your user base and catch suspicious activity.
-
-**Dynamic Command Control** — Enable or disable Discord bot commands from the dashboard without touching code. Changes apply on next restart.
-
-**API Customization** — Toggle entire APIs on/off or disable specific endpoints. Require Discord IDs in validation requests. Choose exactly what data gets returned. You're in control.
-
-**Modular Everything** — The entire codebase is built to be extended. All data operations live in one file, making database migrations painless.
-
-**Blazing Fast** — Next.js Server Components + lightweight file storage = seriously responsive performance with minimal overhead.
-
----
-
-## 📦 How Your Data Works
-
-Zeus stores everything in plain JSON files. That's it.
-
-**Why does this matter?**
-
-- **Zero Setup** — No database servers to install or configure. Works immediately.
-- **Portable** — Move your entire app and data anywhere. Back it up with Git. Copy to another server. Easy.
-- **Surprisingly Fast** — For most use cases, local file operations are incredibly quick and eliminate network latency.
-- **Actually Readable** — Open any JSON file and see your data. Edit it directly if needed (though the dashboard is cleaner).
-
-Perfect for getting started fast. When you need something beefier like MySQL or PostgreSQL, the modular data layer makes migration straightforward.
-
----
-
-## 🚀 Getting Started
-
-Get Zeus running in less than 5 minutes.
-
-### Prerequisites
-
-- Node.js 18+ installed
-- A Discord bot token ([create one here](https://discord.com/developers/applications))
-- Git
-
-### Installation
-
-**1. Clone the repo**
 ```bash
 git clone https://github.com/unt1tler/Zeus.git
 cd Zeus
 ```
 
-**2. Install dependencies**
+2. Install dependencies
+
 ```bash
 npm install
 ```
 
-**3. Set up environment variables**
-
-Create a `.env` file in the root directory:
+3. Create a `.env` file in the root directory and add the required environment variables
 
 ```env
 LOGIN_EMAIL=your-email@example.com
-LOGIN_PASSWORD=your-secure-password
-SESSION_SECRET=generate-a-long-random-string-here
-DISCORD_BOT_TOKEN=your-discord-bot-token
+LOGIN_PASSWORD=your-password
+SESSION_SECRET=generate-one-here
+DISCORD_BOT_TOKEN=your-bot-token
 ```
 
-> 💡 **Tip:** Generate a secure session secret at [generate-secret.vercel.app](https://generate-secret.vercel.app/32)
+To generate a secure session secret, use [generate-secret.vercel.app](https://generate-secret.vercel.app/32).
 
-**4. Start the development server**
+4. Start the development server
+
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:9002](http://localhost:9002) and you're in! 🎉
+Access the admin panel at `http://localhost:9002`.
 
----
+## Configuration
 
-## 🌐 Going Live
+All configuration is handled through environment variables in your `.env` file.
 
-Ready to deploy? Here's how.
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `LOGIN_EMAIL` | Email to log into the admin panel | Yes |
+| `LOGIN_PASSWORD` | Password for the admin panel | Yes |
+| `SESSION_SECRET` | Secret key for signing session cookies | Yes |
+| `DISCORD_BOT_TOKEN` | Your Discord bot's token | Yes |
 
-**Build the application**
+Additional settings like API configuration, accent colors, and feature toggles can be managed from the admin dashboard.
+
+## Usage
+
+### Admin Panel
+
+The admin panel at `/admin` is where you manage everything. Log in with your credentials to:
+
+- Create and manage products
+- Generate and manage licenses
+- View customer profiles
+- Create vouchers
+- Configure API settings
+- Manage Discord bot commands
+- View validation logs and geographic data
+
+### Client Dashboard
+
+Customers can access their dashboard (if enabled) to:
+
+- View their licenses
+- Manage allowed IPs and HWIDs
+- Check expiration dates
+- Redeem vouchers
+
+### Discord Bot
+
+The bot supports both admin and user commands:
+
+**Admin commands:** Manage licenses, create users, check system status
+**User commands:** Check profile, manage licenses, redeem vouchers
+
+Use the `/link-builtbybit` command to connect a Discord account with a BuiltByBit account.
+
+## API
+
+Zeus provides two main APIs for external integrations.
+
+### Validation API
+
+Check if a license key is valid. This is public and can be called from your applications.
+
+**Endpoint:** `POST /api/validate`
+
+**Request:**
+```json
+{
+  "license_key": "your-license-key"
+}
+```
+
+**Response (on success):**
+```json
+{
+  "valid": true,
+  "license": { /* license object */ },
+  "customer": { /* customer object */ },
+  "product": { /* product object */ }
+}
+```
+
+Response payload is configurable from the admin dashboard.
+
+### Admin REST API
+
+Manage licenses, customers, and products programmatically.
+
+**Endpoint:** `POST /api/admin/*`
+
+Protected by API key (set in admin settings).
+
+**Available endpoints:**
+- Create, read, update, delete licenses
+- Create, read, update, delete customers
+- Create, read, update, delete products
+
+## Database
+
+Zeus uses a file-based JSON database by default. All data is stored in the `/data` directory as simple JSON files.
+
+**Why JSON files?**
+
+- No database server to install or manage
+- Easy to back up and version control
+- Fast for small to medium workloads
+- Human-readable data
+
+**Switching databases**
+
+All database operations are handled in `src/lib/data.ts`. To use MySQL, PostgreSQL, MongoDB, or another system, rewrite the functions in that file. The rest of the application will work unchanged.
+
+## Project Structure
+
+```
+zeus/
+├── src/
+│   ├── app/           # Next.js pages and API routes
+│   ├── bot/           # Discord bot commands
+│   ├── lib/           # Core utilities and data layer
+│   ├── components/    # React components
+│   └── styles/        # Tailwind and global styles
+├── data/              # JSON database files
+├── public/            # Static assets
+└── .env               # Environment variables (create this)
+```
+
+## Development
+
+**Running the dev server:**
+```bash
+npm run dev
+```
+
+**Building for production:**
 ```bash
 npm run build
 ```
-This also deploys your Discord bot commands.
 
-**Start in production mode**
+**Starting in production mode:**
 ```bash
 npm start
 ```
-Starts the Next.js server and runs the Discord bot in the background.
 
-**Deployment Options:**
-- **Vercel** — Zero config, just connect your repo
-- **VPS** — Any server with Node.js works
-- **Dedicated Server** — Full control over everything
+## Adding Features
 
----
+**New API routes:** Add files to `src/app/api/` and use the `checkApiKey` utility for protected routes.
 
-## 🛠️ Technology Stack
+**New bot commands:** Create a file in `src/bot/commands/`. The bot loads it automatically if enabled in settings.
 
-- **Framework:** [Next.js 14](https://nextjs.org/) (App Router)
-- **Styling:** [Tailwind CSS](https://tailwindcss.com/)
-- **UI Components:** [shadcn/ui](https://ui.shadcn.com/)
-- **Language:** [TypeScript](https://www.typescriptlang.org/)
-- **Discord:** [Discord.js](https://discord.js.org/)
-- **Database:** JSON file-based system
+**Custom styling:** Modify `src/app/globals.css` and `tailwind.config.ts`.
 
----
+## Contributing
 
-## 🔧 Making It Your Own
-
-Zeus is designed to be extended. Here's how:
-
-**Add New API Routes** — Drop new endpoints in `src/app/api/`. Use the `checkApiKey` utility for protected routes.
-
-**Add Bot Commands** — Create a JavaScript file in `src/bot/commands/`. The bot auto-registers it if enabled in settings.
-
-**Switch Databases** — All data operations are in `src/lib/data.ts`. Want MySQL, MongoDB, or Firestore? Just rewrite this one file. Everything else keeps working.
-
-**Customize Styling** — Modify `src/app/globals.css` and `tailwind.config.ts`. Tailwind and shadcn/ui give you tons of flexibility.
-
----
-
-## 📝 Configuration
-
-Your `.env` file controls everything:
-
-| Variable | What It Does | Required |
-|----------|-------------|----------|
-| `LOGIN_EMAIL` | Email for admin dashboard login | ✅ Yes |
-| `LOGIN_PASSWORD` | Password for admin dashboard | ✅ Yes |
-| `SESSION_SECRET` | Secret key for session cookies | ✅ Yes |
-| `DISCORD_BOT_TOKEN` | Your Discord bot token | ✅ Yes |
-
----
-
-## 🤝 Contributing
-
-Found a bug? Want to add a feature? Contributions are welcome!
+Contributions are welcome. If you have ideas, found a bug, or want to improve the code:
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a branch for your changes (`git checkout -b feature/your-feature`)
+3. Commit your changes (`git commit -m 'Add your feature'`)
+4. Push to your branch (`git push origin feature/your-feature`)
+5. Open a pull request
 
----
+## License
 
-## 📄 License
+This project is open source under the [MIT License](LICENSE).
 
-This project is open source and available under the [MIT License](LICENSE).
+## Support
 
----
-
-## 💬 Community & Support
-
-- **Discord:** [Join our community](https://discord.gg/CR7s2aEf9T)
-- **Issues:** [Report bugs or request features](https://github.com/unt1tler/Zeus/issues)
-- **Discussions:** [Ask questions and share ideas](https://github.com/unt1tler/Zeus/discussions)
-
----
-
-<div align="center">
-  
-  **Built with ❤️ by the Zeus team**
-  
-  If Zeus helped you out, consider giving it a ⭐ on GitHub!
-  
-</div>
+- **Discord:** [Join the community](https://discord.gg/CR7s2aEf9T)
+- **Issues:** [Report bugs](https://github.com/unt1tler/Zeus/issues)
+- **Discussions:** [Ask questions](https://github.com/unt1tler/Zeus/discussions)
