@@ -50,7 +50,9 @@ import { CopyButton } from "../CopyButton";
 const settingsSchema = z.object({
   panelUrl: z.string().url("Please enter a valid URL.").optional().or(z.literal('')),
   adminApiEnabled: z.boolean().default(false),
-  discordBotEnabled: z.boolean().default(false),
+  discordBot: z.object({
+      enabled: z.boolean().default(false)
+  }),
   clientPanel: z.object({
     enabled: z.boolean().default(false),
     accentColor: z.string().optional(),
@@ -155,7 +157,9 @@ export function SettingsForm({ settings }: { settings: Settings }) {
     defaultValues: settings ? {
       panelUrl: settings.panelUrl || "",
       adminApiEnabled: settings.adminApiEnabled,
-      discordBotEnabled: settings.discordBot.enabled,
+      discordBot: {
+          enabled: settings.discordBot.enabled
+      },
       clientPanel: {
         enabled: settings.clientPanel?.enabled || false,
         accentColor: settings.clientPanel?.accentColor || '#3b82f6',
@@ -413,7 +417,7 @@ export function SettingsForm({ settings }: { settings: Settings }) {
                   <div className="space-y-2 rounded-lg border p-4">
                     <FormField
                       control={form.control}
-                      name="discordBotEnabled"
+                      name="discordBot.enabled"
                       render={({ field }) => (
                         <FormItem className="flex flex-row items-center justify-between">
                           <div className="space-y-0.5">
