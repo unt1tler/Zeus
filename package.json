@@ -1,7 +1,7 @@
 
 {
-  "name": "nextn",
-  "version": "0.1.0",
+  "name": "zeus",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "node scripts/dev-startup.js & next dev --turbopack -p 9002",
@@ -9,7 +9,9 @@
     "start": "node scripts/start-bot.js && next start -p 9002",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "deploy-bot-commands": "node src/bot/deploy-commands.js"
+    "deploy-bot-commands": "node src/bot/deploy-commands.js",
+    "dev:windows": "start-dev.bat",
+    "start:windows": "start.bat"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.20.0",
