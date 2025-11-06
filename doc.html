@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zeus - Documentation</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --header-color: #ffffff;
+            --sidebar-bg: #222222;
+            --sidebar-link: #b0b0b0;
+            --sidebar-link-hover: #ffffff;
+            --border-color: #333333;
+            --code-bg: #282c34;
+            --pre-bg: #222;
+            --primary-color: #007bff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            display: flex;
+        }
+
+        .sidebar {
+            width: 280px;
+            position: fixed;
+            top: 0;
+            right: 0;
+            height: 100vh;
+            background-color: var(--sidebar-bg);
+            border-left: 1px solid var(--border-color);
+            padding: 2rem;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        
+        .sidebar h2 {
+            margin-top: 0;
+            color: var(--header-color);
+            font-size: 1.2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+        
+        .sidebar ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .sidebar li {
+            margin: 0.8rem 0;
+        }
+
+        .sidebar a {
+            color: var(--sidebar-link);
+            text-decoration: none;
+            transition: color 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .sidebar a:hover {
+            color: var(--sidebar-link-hover);
+        }
+
+        .main-content {
+            flex-grow: 1;
+            padding: 3rem;
+            padding-right: calc(280px + 3rem); /* Space for the sidebar */
+            box-sizing: border-box;
+        }
+
+        h1, h2, h3, h4 {
+            color: var(--header-color);
+            margin-top: 2.5rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+        }
+
+        h2 {
+            font-size: 2rem;
+        }
+        
+        h3 {
+           font-size: 1.5rem;
+        }
+        
+        h4 {
+           font-size: 1.2rem;
+           border-bottom: none;
+        }
+
+        p, li {
+            color: var(--text-color);
+        }
+
+        code {
+            background-color: var(--code-bg);
+            padding: 0.2em 0.4em;
+            margin: 0;
+            font-size: 85%;
+            border-radius: 6px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        }
+
+        pre {
+            background-color: var(--pre-bg);
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+
+        pre code {
+            padding: 0;
+            background: none;
+            font-size: 100%;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1rem;
+        }
+        
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 0.75rem;
+            text-align: left;
+        }
+        
+        th {
+            background-color: var(--sidebar-bg);
+        }
+        
+        strong {
+            color: var(--primary-color);
+        }
+
+        .tag {
+            border-radius: 4px;
+            padding: 0.2rem 0.5rem;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: white;
+        }
+
+        .tag.get { background-color: #3b82f6; }
+        .tag.post { background-color: #22c55e; }
+        .tag.patch { background-color: #f97316; }
+        .tag.delete { background-color: #ef4444; }
+
+    </style>
+</head>
+<body>
+
+    <div class="main-content">
+        <h1>Zeus Documentation</h1>
+        <p>A comprehensive guide to installing, configuring, and using the Zeus license management system.</p>
+
+        <section id="introduction">
+            <h2>Introduction</h2>
+            <p>Welcome to Zeus, a powerful, open-source license management system built with Next.js and Tailwind CSS. This documentation provides all the information you need to get up and running, from initial setup to advanced configuration and API usage.</p>
+        </section>
+
+        <section id="installation">
+            <h2>Installation</h2>
+            <p>Follow these steps to get a local instance of Zeus running on your machine.</p>
+
+            <h4>Prerequisites</h4>
+            <ul>
+                <li><strong>Node.js:</strong> Version 20.x or higher.</li>
+                <li><strong>npm</strong> or a compatible package manager.</li>
+            </ul>
+
+            <h4>Step-by-Step Guide</h4>
+            <ol>
+                <li>
+                    <strong>Clone the Repository:</strong>
+                    <pre><code>git clone https://github.com/your-github/zeus.git
+cd zeus</code></pre>
+                </li>
+                <li>
+                    <strong>Install Dependencies:</strong>
+                    <pre><code>npm install</code></pre>
+                </li>
+                <li>
+                    <strong>Set Up Environment Variables:</strong><br>
+                    Create a new file named <code>.env</code> in the root of the project and copy the contents from <code>.env.example</code> (if it exists) or use the template below.
+                    <pre><code>LOGIN_EMAIL=your_admin_email@example.com
+LOGIN_PASSWORD=your_super_secret_password
+SESSION_SECRET=a_very_long_and_random_string_for_sessions
+DISCORD_BOT_TOKEN=your_discord_bot_token_here</code></pre>
+                    <ul>
+                        <li><code>LOGIN_EMAIL</code> & <code>LOGIN_PASSWORD</code>: Credentials for the admin dashboard.</li>
+                        <li><code>SESSION_SECRET</code>: A long, random string to secure user sessions.</li>
+                        <li><code>DISCORD_BOT_TOKEN</code>: Your bot's token from the Discord Developer Portal.</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>Run the Development Server:</strong>
+                    <p>Depending on your operating system, use the appropriate command:</p>
+                    <p><strong>For Windows:</strong></p>
+                    <pre><code>npm run dev:windows</code></pre>
+                    <p>This will open two separate command prompts: one for the Next.js web server and one for the Discord bot.</p>
+                    <p><strong>For macOS / Linux:</strong></p>
+                    <pre><code>npm run dev</code></pre>
+                    <p>This will start both the web server and the Discord bot in the same terminal.</p>
+                </li>
+                <li><strong>Access the Panel:</strong> Your admin panel will be available at <code>http://localhost:9002</code>.</li>
+            </ol>
+        </section>
+        
+        <section id="features">
+            <h2>Core Features</h2>
+            <p>This section details the key features and concepts within Zeus.</p>
+            
+            <h3>IP and HWID Protection</h3>
+            <p>Zeus provides two primary methods for securing your applications and preventing unauthorized sharing.</p>
+            
+            <h4>IP Address Protection</h4>
+            <p>When IP protection is enabled, Zeus records the IP address of every machine that successfully validates a given license key. You can control how many unique IPs are allowed per license.</p>
+            <ul>
+                <li><strong>How it works:</strong> The first time a license is validated on a new machine, its IP is saved. If the number of saved IPs reaches the license's limit, any validation requests from new IPs will be rejected.</li>
+                <li><strong>Configuration:</strong> You can configure IP protection on a per-license basis.
+                    <ul>
+                        <li><strong>Fixed Number:</strong> Set a specific limit (e.g., 1, 3, 5 IPs).</li>
+                        <li><strong>Unlimited:</strong> Set to <code>-1</code>. This tracks all IPs used but never blocks new ones.</li>
+                        <li><strong>Disabled:</strong> Set to <code>-2</code>. The system will not check or record any IP addresses for the license.</li>
+                    </ul>
+                </li>
+                <li><strong>Management:</strong> Customers can manage their own allowed IPs through the Client Panel.</li>
+            </ul>
+
+            <h4>HWID Protection</h4>
+            <p>HWID (Hardware ID) protection is a stricter method that ties a license to a specific machine. A HWID is a unique identifier generated by your application based on the user's computer components (e.g., CPU ID, motherboard serial number).</p>
+             <ul>
+                <li><strong>How it works:</strong> You must implement HWID generation logic within your own application. The generated HWID is then sent with every validation request. Like IP protection, Zeus will save the HWID and block new ones once the license limit is reached.</li>
+                <li><strong>Configuration:</strong> HWID protection is enabled or disabled **per product**. When you create or edit a product, you can toggle a switch to enable it. Once enabled, all licenses for that product will have HWID checks enforced. You can then set the maximum allowed HWIDs per license.</li>
+            </ul>
+            
+            <h3>Voucher System</h3>
+            <p>Vouchers allow you to generate single-use codes that customers can redeem to either create a new license or extend an existing one. This is perfect for giveaways, promotions, or providing trial access.</p>
+            <ul>
+                <li><strong>Creation:</strong> Vouchers can be created from the "Vouchers" section on the Licenses page. You specify which product the voucher is for and its duration (e.g., `1m` for one month, `1y` for one year, or `lifetime`).</li>
+                <li><strong>Redemption:</strong> Users can redeem a voucher using the `/redeem [code]` command in Discord.
+                    <ul>
+                        <li>If the user does not own a license for that product, a new one is created.</li>
+                        <li>If they already own a license, the voucher's duration is added to their existing license's expiration date.</li>
+                    </ul>
+                </li>
+            </ul>
+        </section>
+        
+         <section id="integrations">
+            <h2>Integrations</h2>
+            <p>Zeus offers powerful integrations to automate your sales and license distribution workflows.</p>
+
+            <h3>BuiltByBit Integration</h3>
+            <p>There are two methods for integrating with BuiltByBit, designed for different use cases.</p>
+            
+            <h4>1. Placeholder Automation (for one-time downloads)</h4>
+            <p>This is the simplest "set-it-and-forget-it" method for products sold with a one-time fee. It automatically creates a lifetime license the first time a user downloads your product from BuiltByBit.</p>
+            <ul>
+                <li><strong>How it works:</strong> You create a special "placeholder" in BuiltByBit (e.g., `%%__PRODUCT_LICENSE__%%`) and include it in your downloadable product file. When a user downloads the file, BuiltByBit sends a request to Zeus, which generates a new lifetime license and replaces the placeholder with the real key.</li>
+                <li><strong>Setup:</strong> In the Zeus panel under `Integration > BuiltByBit > Placeholder Automation`, you'll find your unique webhook URL and a secret key. You must configure these in the BuiltByBit placeholder settings.</li>
+            </ul>
+            
+            <h4>2. Purchase Webhook (for direct purchases)</h4>
+            <p>This method creates a license immediately when a user completes a purchase on BuiltByBit, linking the purchase directly to their BuiltByBit account.</p>
+             <ul>
+                <li><strong>How it works:</strong> You configure a webhook in your BuiltByBit resource settings to point to your Zeus panel. When a purchase occurs, BuiltByBit sends a payload of data to Zeus, which then creates the corresponding license.</li>
+                <li><strong>Account Linking:</strong> Initially, the license is only associated with the user's BuiltByBit ID. The user can then use the `/link-builtbybit` command in Discord. This command securely verifies they own the BuiltByBit account and links all their existing and future licenses purchased through that account to their Discord ID. This provides a seamless experience, allowing them to manage their licenses via Discord.</li>
+            </ul>
+        </section>
+
+
+        <section id="deployment">
+            <h2>Deployment</h2>
+            <p>Deploying Zeus is straightforward on any platform that supports Node.js.</p>
+            
+            <h4>Build the Application</h4>
+            <p>First, build the application for production. This command also syncs your Discord bot commands.</p>
+            <pre><code>npm run build</code></pre>
+
+            <h4>Running in Production</h4>
+            <p>Use the appropriate command for your server's operating system.</p>
+            
+            <p><strong>On a Linux Server (Recommended):</strong></p>
+            <pre><code>npm start</code></pre>
+            <p>This command starts the Next.js server and runs the Discord bot as a detached background process, ensuring it keeps running even if you close the terminal.</p>
+
+            <p><strong>On Windows Server:</strong></p>
+            <pre><code>npm run start:windows</code></pre>
+            <p>This will open two separate command prompts, one for the production web server and one for the bot.</p>
+        </section>
+        
+        <section id="admin-api">
+            <h2>Admin REST API</h2>
+            <p>The Admin API allows you to manage your licensing system programmatically. All requests must include your Admin API Key in the <code>x-api-key</code> header. The entire API and its individual endpoints can be toggled on or off from the <strong>Settings</strong> page.</p>
+            <pre><code>Headers: {
+  "Content-Type": "application/json",
+  "x-api-key": "YOUR_ADMIN_API_KEY"
+}</code></pre>
+
+            <h4>Endpoints</h4>
+            <p>Below are the available endpoints. You can enable or disable each one from the Settings page.</p>
+
+            <div>
+                <h4><span class="tag get">GET</span> /api/admin/licenses</h4>
+                <p>Retrieves a list of all licenses in the system.</p>
+            </div>
+            
+            <div>
+                <h4><span class="tag post">POST</span> /api/admin/licenses</h4>
+                <p>Creates a new license.</p>
+                <h5>Request Body:</h5>
+                <pre><code>{
+  "productId": "string (required)",
+  "discordId": "string (required)",
+  "discordUsername": "string (optional)",
+  "email": "string (optional)",
+  "expiresAt": "ISO 8601 Date string (optional, null for lifetime)",
+  "maxIps": "number (optional, default 1)",
+  "maxHwids": "number (optional, default 1)",
+  "platform": "string (optional, default 'custom')",
+  "platformUserId": "string (optional)",
+  "subUserDiscordIds": "string[] (optional)"
+}</code></pre>
+            </div>
+
+            <div>
+                <h4><span class="tag patch">PATCH</span> /api/admin/licenses/{key}</h4>
+                <p>Updates the status of a specific license.</p>
+                <h5>Request Body:</h5>
+                <pre><code>{
+  "status": "'active' | 'inactive'"
+}</code></pre>
+            </div>
+
+            <div>
+                <h4><span class="tag patch">PATCH</span> /api/admin/licenses/{key}/renew</h4>
+                <p>Renews a license by setting a new expiration date.</p>
+                <h5>Request Body:</h5>
+                <pre><code>{
+  "expiresAt": "ISO 8601 Date string"
+}</code></pre>
+            </div>
+
+            <div>
+                <h4><span class="tag delete">DELETE</span> /api/admin/licenses/{key}</h4>
+                <p>Permanently deletes a license.</p>
+            </div>
+
+            <div>
+                <h4><span class="tag post">POST</span> /api/admin/licenses/{key}/sub-users</h4>
+                <p>Adds a sub-user to a license.</p>
+                <h5>Request Body:</h5>
+                <pre><code>{
+  "subUserDiscordId": "string (required)"
+}</code></pre>
+            </div>
+
+            <div>
+                <h4><span class="tag delete">DELETE</span> /api/admin/licenses/{key}/sub-users</h4>
+                <p>Removes a sub-user from a license.</p>
+                <h5>Request Body:</h5>
+                <pre><code>{
+  "subUserDiscordId": "string (required)"
+}</code></pre>
+            </div>
+        </section>
+        
+         <section id="validation-api">
+            <h2>Validation API</h2>
+            <p>The public-facing Validation API allows your application to check if a license key is valid. It's highly configurable from the <strong>Integration</strong> page.</p>
+
+            <h4>Endpoint</h4>
+             <pre><code><span class="tag post">POST</span> /api/validate</code></pre>
+             
+            <h4>Request Body</h4>
+             <pre><code>{
+  "key": "LF-YOUR-LICENSE-KEY",
+  "discordId": "USER_DISCORD_ID (optional)",
+  "hwid": "USER_HARDWARE_ID (optional)"
+}</code></pre>
+
+            <h4>Customizable API Response</h4>
+            <p>One of the most powerful features of Zeus is the ability to completely customize the JSON response your application receives on a successful validation. In the <strong>Integration</strong> settings, you can:</p>
+            <ul>
+                <li><strong>Require a Discord ID:</strong> Enforce that all validation requests include a `discordId` in the body.</li>
+                <li><strong>Toggle Data Objects:</strong> Choose whether to include the `license`, `customer`, or `product` objects in the success response.</li>
+                <li><strong>Select Specific Fields:</strong> For each data object, you can granularly select which fields to include (e.g., only return the `license_key` and `expires_at` from the license object).</li>
+                <li><strong>Custom Success Message:</strong> Define a custom string to be returned in the `message` field on success.</li>
+            </ul>
+            <p>This allows you to tailor the validation response to exactly what your application needs, reducing payload size and complexity.</p>
+        </section>
+
+        <section id="discord-bot">
+            <h2>Discord Bot</h2>
+            <p>The integrated Discord bot provides powerful commands for both administrators and customers.</p>
+            
+            <h4>Admin Commands</h4>
+            <p>These commands can only be used by users whose Discord IDs are in the "Bot Admins" list in the settings.</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Command</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>/check-licenses [key]</code></td>
+                        <td>View detailed information about a specific license key.</td>
+                    </tr>
+                    <tr>
+                        <td><code>/create-license [...]</code></td>
+                        <td>Create a new license key with various options.</td>
+                    </tr>
+                    <tr>
+                        <td><code>/deactivate [key]</code></td>
+                        <td>Deactivate a license key.</td>
+                    </tr>
+                     <tr>
+                        <td><code>/renew-license [key] [duration]</code></td>
+                        <td>Renew an expired or active license.</td>
+                    </tr>
+                    <tr>
+                        <td><code>/search-license [discord_id]</code></td>
+                        <td>Find all licenses owned by a specific Discord user.</td>
+                    </tr>
+                    <tr>
+                        <td><code>/view-user [user]</code></td>
+                        <td>View a summary of a user's licenses and member status.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h4>User Commands</h4>
+            <p>Available to all users in the server.</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Command</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>/profile</code></td>
+                        <td>View your own license profile summary.</td>
+                    </tr>
+                     <tr>
+                        <td><code>/user-licenses</code></td>
+                        <td>View a list of all licenses you own or are a sub-user on.</td>
+                    </tr>
+                    <tr>
+                        <td><code>/manage-license [key]</code></td>
+                        <td>Manage a license you own, including adding/removing IPs, HWIDs, and sub-users.</td>
+                    </tr>
+                    <tr>
+                        <td><code>/redeem [code]</code></td>
+                        <td>Redeem a voucher code to create a new license or renew an existing one.</td>
+                    </tr>
+                    <tr>
+                        <td><code>/link-builtbybit [builtbybit_id]</code></td>
+                        <td>Securely link your BuiltByBit account to your Discord to automatically claim licenses purchased there.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+        
+        <section id="client-panel">
+            <h2>Client Panel</h2>
+            <p>Zeus includes a beautiful, customer-facing dashboard where your users can log in with Discord to manage their own licenses. This feature can be toggled on or off entirely from the <strong>Settings</strong> page.</p>
+            <ul>
+                <li><strong>Self-Service Management:</strong> Customers can view all their licenses, see expiration dates, and manage their allowed IPs and HWIDs without needing to contact you.</li>
+                <li><strong>Custom Accent Color:</strong> You can set a custom accent color (using a hex code) for the client panel to match your brand identity. This is also configured in the main <strong>Settings</strong> page.</li>
+            </ul>
+        </section>
+    </div>
+
+    <aside class="sidebar">
+        <h2>Navigation</h2>
+        <ul>
+            <li><a href="#introduction">Introduction</a></li>
+            <li><a href="#installation">Installation</a></li>
+            <li><a href="#features">Core Features</a></li>
+            <li><a href="#integrations">Integrations</a></li>
+            <li><a href="#deployment">Deployment</a></li>
+            <li><a href="#admin-api">Admin API</a></li>
+            <li><a href="#validation-api">Validation API</a></li>
+            <li><a href="#discord-bot">Discord Bot</a></li>
+            <li><a href="#client-panel">Client Panel</a></li>
+        </ul>
+    </aside>
+
+</body>
+</html>
