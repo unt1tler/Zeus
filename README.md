@@ -89,7 +89,7 @@ Zeus was built with three core principles in mind:
 
 ## Database Architecture
 Uses a JSON file-based data system for zero configuration, portability, and speed.  
-Ideal for small-to-medium applications and easily extendable to SQL or Firestore.
+Ideal for small-to-medium applications and easily extendable to SQL ,Firestore, Supabase and etc.
 
 ## Getting Started
 ```bash
