@@ -28,16 +28,16 @@ interface CustomerDetails {
 
 async function getCustomerDetails(
   customerId: string
-): Promise<CustomerDetails | null> {
-  const allLicenses = await getLicenses();
-  const allProducts = await getProducts();
-  const blacklist = await getBlacklist();
+): Promise<(CustomerDetails & { products: Product[]; allLicenses: License[]; allUsers: any[]; blacklist: any }) | null> {
+  const [allLicenses, allProducts, blacklist, discordUser] = await Promise.all([
+    getLicenses(), getProducts(), getBlacklist(), fetchDiscordUser(customerId)
+  ]);
   
   const ownedLicenses = allLicenses.filter(l => l.discordId === customerId);
   const subUserLicenses = allLicenses.filter(l => (l.subUserDiscordIds || []).includes(customerId));
   
+  const allUsers = await getAllUsers();
   if (ownedLicenses.length === 0 && subUserLicenses.length === 0) {
-    const allUsers = await getAllUsers();
     if (!allUsers.some(u => u.id === customerId)) {
         return null;
     }
@@ -55,7 +55,6 @@ async function getCustomerDetails(
       productName: getProductName(l.productId),
   }));
   
-  const discordUser = await fetchDiscordUser(customerId);
   const firstOwnedLicense = ownedLicenses[0];
   
   const username = discordUser?.username || firstOwnedLicense?.discordUsername || subUserLicenses[0]?.discordUsername || customerId;
@@ -70,25 +69,22 @@ async function getCustomerDetails(
   
   const isBlacklisted = blacklist.discordIds.includes(customerId);
 
-  return { customer, ownedLicenses: enrichedOwnedLicenses, subUserLicenses: enrichedSubUserLicenses, isBlacklisted };
+  return { customer, ownedLicenses: enrichedOwnedLicenses, subUserLicenses: enrichedSubUserLicenses, isBlacklisted, products: allProducts, allLicenses, allUsers, blacklist };
 }
 
 export default async function CustomerProfilePage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const customerData = await getCustomerDetails(params.id);
+  const { id } = await params;
+  const customerData = await getCustomerDetails(id);
 
   if (!customerData) {
     notFound();
   }
 
-  const { customer, ownedLicenses, subUserLicenses, isBlacklisted } = customerData;
-  const products = await getProducts();
-  const allLicenses = await getLicenses();
-  const allUsers = await getAllUsers();
-  const blacklist = await getBlacklist();
+  const { customer, ownedLicenses, subUserLicenses, isBlacklisted, products, allLicenses, allUsers, blacklist } = customerData;
   
   return (
     <div className="flex flex-col gap-8">

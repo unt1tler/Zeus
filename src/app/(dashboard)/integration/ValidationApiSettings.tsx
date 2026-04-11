@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, type FieldPath } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTransition, useEffect, useRef } from "react";
@@ -110,6 +110,23 @@ const validationResponseFieldDetails = {
             enabled: 'Enabled Status'
         }
     }
+} as const;
+
+type SettingsFormValues = z.infer<typeof settingsSchema>;
+type SettingsFormFieldPath = FieldPath<SettingsFormValues>;
+type ValidationCategory = keyof typeof validationResponseFieldDetails;
+
+const validationCategories = Object.keys(validationResponseFieldDetails) as ValidationCategory[];
+
+function getCategoryEnabledFieldName(category: ValidationCategory): SettingsFormFieldPath {
+  return `validationResponse.${category}.enabled` as SettingsFormFieldPath;
+}
+
+function getCategoryFieldsFieldName(
+  category: ValidationCategory,
+  subField: string
+): SettingsFormFieldPath {
+  return `validationResponse.${category}.fields.${subField}` as SettingsFormFieldPath;
 }
 
 export function ValidationApiSettings({ settings }: { settings: Settings }) {
@@ -117,7 +134,7 @@ export function ValidationApiSettings({ settings }: { settings: Settings }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const form = useForm<z.infer<typeof settingsSchema>>({
+  const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
       validationResponse: settings.validationResponse,
@@ -127,7 +144,7 @@ export function ValidationApiSettings({ settings }: { settings: Settings }) {
   const watchedValues = form.watch();
   const initialValuesRef = useRef(JSON.stringify(form.getValues()));
 
-  const debouncedSettingsUpdate = useDebouncedCallback(async (values: z.infer<typeof settingsSchema>) => {
+  const debouncedSettingsUpdate = useDebouncedCallback(async (values: SettingsFormValues) => {
     startTransition(async () => {
       const result = await updateSettings({ validationResponse: values.validationResponse });
       if (result.success) {
@@ -148,10 +165,10 @@ export function ValidationApiSettings({ settings }: { settings: Settings }) {
   }, 1000);
 
   useEffect(() => {
-    const subscription = form.watch((value, { name, type }) => {
+    const subscription = form.watch((value) => {
         const currentValues = JSON.stringify(value);
         if (currentValues !== initialValuesRef.current) {
-            debouncedSettingsUpdate(value as z.infer<typeof settingsSchema>);
+            debouncedSettingsUpdate(value as SettingsFormValues);
         }
     });
     return () => subscription.unsubscribe();
@@ -219,7 +236,7 @@ export function ValidationApiSettings({ settings }: { settings: Settings }) {
                                   </FormDescription>
                               </div>
                               <FormControl>
-                                  <Switch checked={field.value} onCheckedChange={field.onChange} disabled={isPending} />
+                                  <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} disabled={isPending} />
                               </FormControl>
                               </FormItem>
                           )}
@@ -238,7 +255,7 @@ export function ValidationApiSettings({ settings }: { settings: Settings }) {
                                   </FormDescription>
                               </div>
                               <FormControl>
-                                  <Switch checked={field.value} onCheckedChange={field.onChange} disabled={isPending} />
+                                  <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} disabled={isPending} />
                               </FormControl>
                               </FormItem>
                           )}
@@ -265,41 +282,46 @@ export function ValidationApiSettings({ settings }: { settings: Settings }) {
                   </div>
                   
                   <Accordion type="multiple" className="w-full space-y-2">
-                   {(Object.keys(validationResponseFieldDetails) as Array<keyof typeof validationResponseFieldDetails>).map((category) => (
+                   {validationCategories.map((category) => {
+                      const categoryConfig = validationResponseFieldDetails[category];
+                      const categoryValues = watchedValues.validationResponse[category];
+                      const subFields = Object.keys(categoryConfig.fields);
+
+                      return (
                       <div key={category} className="space-y-2 rounded-lg border p-4">
                          <FormField
                           control={form.control}
-                          name={`validationResponse.${category}.enabled`}
+                          name={getCategoryEnabledFieldName(category)}
                           render={({ field }) => (
                               <FormItem className="flex flex-row items-center justify-between">
                               <div className="space-y-0.5">
-                                  <FormLabel className="text-base">{validationResponseFieldDetails[category].label}</FormLabel>
+                                  <FormLabel className="text-base">{categoryConfig.label}</FormLabel>
                                   <FormDescription>
-                                      {validationResponseFieldDetails[category].description}
+                                      {categoryConfig.description}
                                   </FormDescription>
                               </div>
                               <FormControl>
-                                  <Switch checked={field.value} onCheckedChange={field.onChange} disabled={isPending} />
+                                  <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} disabled={isPending} />
                               </FormControl>
                               </FormItem>
                           )}
                           />
-                           {watchedValues.validationResponse[category as keyof typeof watchedValues.validationResponse].enabled && (
+                           {categoryValues.enabled && (
                               <AccordionItem value={category} className="border-b-0">
                                   <AccordionTrigger className="text-xs -ml-2 text-muted-foreground">
                                       Show granular options
                                   </AccordionTrigger>
                                   <AccordionContent className="pt-4 space-y-4">
-                                       {(Object.keys(validationResponseFieldDetails[category].fields) as (keyof typeof validationResponseFieldDetails[typeof category]['fields'])[]).map((subField) => (
+                                       {subFields.map((subField) => (
                                           <FormField
                                               key={subField}
                                               control={form.control}
-                                              name={`validationResponse.${category}.fields.${subField}`}
+                                              name={getCategoryFieldsFieldName(category, subField)}
                                               render={({ field }) => (
                                                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-                                                      <FormLabel className="font-normal">{validationResponseFieldDetails[category].fields[subField]}</FormLabel>
+                                                      <FormLabel className="font-normal">{categoryConfig.fields[subField as keyof typeof categoryConfig.fields]}</FormLabel>
                                                       <FormControl>
-                                                        <Switch checked={field.value} onCheckedChange={field.onChange} disabled={isPending} />
+                                                        <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} disabled={isPending} />
                                                       </FormControl>
                                                    </FormItem>
                                               )}
@@ -309,7 +331,7 @@ export function ValidationApiSettings({ settings }: { settings: Settings }) {
                               </AccordionItem>
                            )}
                       </div>
-                   ))}
+                   )})}
                   </Accordion>
               </CardContent>
           </Card>

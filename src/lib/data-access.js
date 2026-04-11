@@ -1,16 +1,43 @@
-
+/**
+ * Bot-specific data access layer (CommonJS).
+ *
+ * This file mirrors the locking/atomic-write patterns in data.ts but is
+ * kept as plain JS because the Discord bot runs as a standalone Node
+ * process without the Next.js/TS build pipeline. If you change locking,
+ * caching, or write logic in data.ts, apply the same change here.
+ */
 const fs = require('fs/promises');
 const path = require('path');
-const { format, addMonths, addYears } = require('date-fns');
+const crypto = require('crypto');
+const { addMonths, addYears } = require('date-fns');
 
 const dataDir = path.resolve(process.cwd(), "data");
 
+const locks = new Map();
+
+async function withFileLock(name, fn) {
+  const prev = locks.get(name) || Promise.resolve();
+  let release;
+  const next = new Promise(r => (release = r));
+  locks.set(name, prev.then(() => next));
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (locks.get(name) === next) locks.delete(name);
+  }
+}
+
+let dirReady = false;
 async function ensureDir() {
+  if (dirReady) return;
   try {
     await fs.access(dataDir);
   } catch {
     await fs.mkdir(dataDir, { recursive: true });
   }
+  dirReady = true;
 }
 
 async function readFile(filename, defaultValue) {
@@ -18,11 +45,11 @@ async function readFile(filename, defaultValue) {
   const filePath = path.join(dataDir, filename);
   try {
     const data = await fs.readFile(filePath, "utf-8");
-    if (data === "") return defaultValue;
+    if (!data.trim()) return defaultValue;
     return JSON.parse(data);
   } catch (error) {
     if (error.code === 'ENOENT') {
-      await writeFile(filename, defaultValue);
+      await writeFileAtomic(filename, defaultValue);
       return defaultValue;
     }
     console.error(`Error reading ${filename}:`, error);
@@ -30,295 +57,332 @@ async function readFile(filename, defaultValue) {
   }
 }
 
-async function writeFile(filename, data) {
+async function writeFileAtomic(filename, data) {
   await ensureDir();
   const filePath = path.join(dataDir, filename);
-  await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
+  const tmpPath = `${filePath}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+  await fs.rename(tmpPath, filePath);
 }
 
-async function getProducts() { return await readFile("products.json", []);}
+const memCache = new Map();
+const CACHE_TTL = 2000;
 
-async function getLicenses() { return await readFile("licenses.json", []);}
-async function saveLicenses(licenses) { await writeFile("licenses.json", licenses);}
+function getCached(key) {
+  const entry = memCache.get(key);
+  if (entry && Date.now() < entry.exp) return structuredClone(entry.data);
+  return null;
+}
+
+function setCache(key, data) {
+  memCache.set(key, { data, exp: Date.now() + CACHE_TTL });
+}
+
+function invalidateCache(key) {
+  memCache.delete(key);
+}
+
+async function getProducts() {
+  const cached = getCached("products.json");
+  if (cached) return cached;
+  const data = await readFile("products.json", []);
+  setCache("products.json", data);
+  return data;
+}
+
+async function getLicenses() {
+  const cached = getCached("licenses.json");
+  if (cached) return cached;
+  const data = await readFile("licenses.json", []);
+  setCache("licenses.json", data);
+  return data;
+}
+
+async function saveLicenses(licenses) {
+  await withFileLock("licenses.json", () => writeFileAtomic("licenses.json", licenses));
+  invalidateCache("licenses.json");
+}
+
 async function createLicense(data) {
-    const licenses = await getLicenses();
+  return await withFileLock("licenses.json", async () => {
+    const licenses = await readFile("licenses.json", []);
     const newLicense = {
-        id: require('crypto').randomUUID(),
-        key: `LF-${require('crypto').randomUUID().toUpperCase()}`,
-        productId: data.productId,
-        discordId: data.discordId,
-        expiresAt: data.expiresAt,
-        maxIps: data.maxIps ?? 1,
-        maxHwids: data.maxHwids ?? 1,
-        subUserDiscordIds: data.subUserDiscordIds || [],
-        status: 'active',
-        allowedIps: [],
-        allowedHwids: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        validations: 0,
+      id: crypto.randomUUID(),
+      key: `LF-${crypto.randomUUID().toUpperCase()}`,
+      productId: data.productId,
+      platform: data.platform || 'custom',
+      platformUserId: data.platformUserId,
+      discordId: data.discordId,
+      discordUsername: data.discordUsername,
+      expiresAt: data.expiresAt,
+      source: data.source || 'zeus',
+      maxIps: data.maxIps ?? 1,
+      maxHwids: data.maxHwids ?? 1,
+      subUserDiscordIds: data.subUserDiscordIds || [],
+      status: 'active',
+      allowedIps: [],
+      allowedHwids: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      validations: 0,
     };
     licenses.unshift(newLicense);
-    await saveLicenses(licenses);
+    await writeFileAtomic("licenses.json", licenses);
+    invalidateCache("licenses.json");
     return { success: true, license: newLicense };
+  });
 }
 
 async function updateLicenseStatus(key, status) {
-    const licenses = await getLicenses();
-    const licenseIndex = licenses.findIndex(l => l.key === key);
-    if (licenseIndex === -1) {
-        return { success: false, message: "License not found." };
-    }
-    licenses[licenseIndex].status = status;
-    licenses[licenseIndex].updatedAt = new Date().toISOString();
-    await saveLicenses(licenses);
+  return await withFileLock("licenses.json", async () => {
+    const licenses = await readFile("licenses.json", []);
+    const idx = licenses.findIndex(l => l.key === key);
+    if (idx === -1) return { success: false, message: "License not found." };
+    licenses[idx].status = status;
+    licenses[idx].updatedAt = new Date().toISOString();
+    await writeFileAtomic("licenses.json", licenses);
+    invalidateCache("licenses.json");
     return { success: true };
+  });
 }
 
 async function addSubUserToLicense(key, discordId) {
-    const licenses = await getLicenses();
-    const licenseIndex = licenses.findIndex(l => l.key === key);
-    if (licenseIndex === -1) {
-        return { success: false, message: 'License not found.' };
-    }
-    const license = licenses[licenseIndex];
-    if (license.discordId === discordId) {
-        return { success: false, message: 'User is the owner of this license.' };
-    }
-    if (!license.subUserDiscordIds) {
-        license.subUserDiscordIds = [];
-    }
-    if (license.subUserDiscordIds.includes(discordId)) {
-        return { success: false, message: 'User is already a sub-user on this license.' };
-    }
+  return await withFileLock("licenses.json", async () => {
+    const licenses = await readFile("licenses.json", []);
+    const idx = licenses.findIndex(l => l.key === key);
+    if (idx === -1) return { success: false, message: 'License not found.' };
+    const license = licenses[idx];
+    if (license.discordId === discordId) return { success: false, message: 'User is the owner of this license.' };
+    if (!license.subUserDiscordIds) license.subUserDiscordIds = [];
+    if (license.subUserDiscordIds.includes(discordId)) return { success: false, message: 'User is already a sub-user on this license.' };
     license.subUserDiscordIds.push(discordId);
-    licenses[licenseIndex] = license;
-    await saveLicenses(licenses);
+    license.updatedAt = new Date().toISOString();
+    licenses[idx] = license;
+    await writeFileAtomic("licenses.json", licenses);
+    invalidateCache("licenses.json");
     return { success: true, license };
+  });
 }
 
 async function removeSubUserFromLicense(key, discordId) {
-    const licenses = await getLicenses();
-    const licenseIndex = licenses.findIndex(l => l.key === key);
-    if (licenseIndex === -1) {
-        return { success: false, message: 'License not found.' };
-    }
-    const license = licenses[licenseIndex];
+  return await withFileLock("licenses.json", async () => {
+    const licenses = await readFile("licenses.json", []);
+    const idx = licenses.findIndex(l => l.key === key);
+    if (idx === -1) return { success: false, message: 'License not found.' };
+    const license = licenses[idx];
     if (!license.subUserDiscordIds || !license.subUserDiscordIds.includes(discordId)) {
-        return { success: false, message: 'Sub-user not found on this license.' };
+      return { success: false, message: 'Sub-user not found on this license.' };
     }
     license.subUserDiscordIds = license.subUserDiscordIds.filter(id => id !== discordId);
-    licenses[licenseIndex] = license;
-    await saveLicenses(licenses);
+    license.updatedAt = new Date().toISOString();
+    licenses[idx] = license;
+    await writeFileAtomic("licenses.json", licenses);
+    invalidateCache("licenses.json");
     return { success: true, license };
+  });
 }
 
-
 async function renewLicense(key, duration) {
-    const licenses = await getLicenses();
+  return await withFileLock("licenses.json", async () => {
+    const licenses = await readFile("licenses.json", []);
     const products = await getProducts();
-    const licenseIndex = licenses.findIndex(l => l.key === key);
-    if (licenseIndex === -1) {
-        return { success: false, message: "License not found." };
-    }
+    const idx = licenses.findIndex(l => l.key === key);
+    if (idx === -1) return { success: false, message: "License not found." };
 
-    const license = licenses[licenseIndex];
+    const license = licenses[idx];
     const product = products.find(p => p.id === license.productId);
-    
+
     let baseDate = new Date();
     if (license.expiresAt && new Date(license.expiresAt) > baseDate) {
-        baseDate = new Date(license.expiresAt);
+      baseDate = new Date(license.expiresAt);
     }
 
     let newExpiryDate;
     if (duration === 'lifetime') {
-        newExpiryDate = null;
+      newExpiryDate = null;
     } else {
-        const amount = parseInt(duration.slice(0, -1));
-        const unit = duration.slice(-1);
-        if (unit === 'm') newExpiryDate = addMonths(baseDate, amount);
-        else if (unit === 'y') newExpiryDate = addYears(baseDate, amount);
-        else return { success: false, message: "Invalid duration format."};
+      const amount = parseInt(duration.slice(0, -1));
+      const unit = duration.slice(-1);
+      if (unit === 'm') newExpiryDate = addMonths(baseDate, amount);
+      else if (unit === 'y') newExpiryDate = addYears(baseDate, amount);
+      else return { success: false, message: "Invalid duration format." };
     }
-    
+
     license.expiresAt = newExpiryDate ? newExpiryDate.toISOString() : null;
     license.status = 'active';
     license.updatedAt = new Date().toISOString();
-    licenses[licenseIndex] = license;
-    await saveLicenses(licenses);
+    licenses[idx] = license;
+    await writeFileAtomic("licenses.json", licenses);
+    invalidateCache("licenses.json");
 
     return { success: true, license, productName: product?.name || 'N/A' };
+  });
 }
 
 async function resetLicenseIdentities(key, type) {
-    const licenses = await getLicenses();
-    const licenseIndex = licenses.findIndex(l => l.key === key);
-    if (licenseIndex === -1) {
-        return { success: false, message: 'License not found.' };
-    }
+  return await withFileLock("licenses.json", async () => {
+    const licenses = await readFile("licenses.json", []);
+    const idx = licenses.findIndex(l => l.key === key);
+    if (idx === -1) return { success: false, message: 'License not found.' };
 
-    if (type === 'ips') {
-        licenses[licenseIndex].allowedIps = [];
-    } else if (type === 'hwids') {
-        licenses[licenseIndex].allowedHwids = [];
-    } else {
-        return { success: false, message: 'Invalid identity type.' };
-    }
+    if (type === 'ips') licenses[idx].allowedIps = [];
+    else if (type === 'hwids') licenses[idx].allowedHwids = [];
+    else return { success: false, message: 'Invalid identity type.' };
 
-    licenses[licenseIndex].updatedAt = new Date().toISOString();
-    await saveLicenses(licenses);
-    return { success: true, license: licenses[licenseIndex] };
+    licenses[idx].updatedAt = new Date().toISOString();
+    await writeFileAtomic("licenses.json", licenses);
+    invalidateCache("licenses.json");
+    return { success: true, license: licenses[idx] };
+  });
 }
 
 async function addLicenseIdentity(key, type, value) {
-    const licenses = await getLicenses();
-    const licenseIndex = licenses.findIndex(l => l.key === key);
-    if (licenseIndex === -1) {
-        return { success: false, message: 'License not found.' };
-    }
+  return await withFileLock("licenses.json", async () => {
+    const licenses = await readFile("licenses.json", []);
+    const idx = licenses.findIndex(l => l.key === key);
+    if (idx === -1) return { success: false, message: 'License not found.' };
 
-    const license = licenses[licenseIndex];
+    const license = licenses[idx];
     if (type === 'ip') {
-        if (license.maxIps !== -1 && license.allowedIps.length >= license.maxIps) {
-            return { success: false, message: 'Maximum number of IPs reached.' };
-        }
-        if (!license.allowedIps.includes(value)) {
-            license.allowedIps.push(value);
-        } else {
-             return { success: false, message: 'This IP is already on the license.' };
-        }
+      if (license.maxIps === -2) return { success: false, message: 'IP protection is disabled for this license.' };
+      if (license.maxIps !== -1 && license.allowedIps.length >= license.maxIps) {
+        return { success: false, message: 'Maximum number of IPs reached.' };
+      }
+      if (license.allowedIps.includes(value)) return { success: false, message: 'This IP is already on the license.' };
+      license.allowedIps.push(value);
     } else if (type === 'hwid') {
-        if (license.maxHwids !== -1 && license.allowedHwids.length >= license.maxHwids) {
-            return { success: false, message: 'Maximum number of HWIDs reached.' };
-        }
-        if (!license.allowedHwids.includes(value)) {
-            license.allowedHwids.push(value);
-        } else {
-            return { success: false, message: 'This HWID is already on the license.' };
-        }
+      if (license.maxHwids === -2) return { success: false, message: 'HWID protection is disabled for this license.' };
+      if (license.maxHwids !== -1 && license.allowedHwids.length >= license.maxHwids) {
+        return { success: false, message: 'Maximum number of HWIDs reached.' };
+      }
+      if (license.allowedHwids.includes(value)) return { success: false, message: 'This HWID is already on the license.' };
+      license.allowedHwids.push(value);
     } else {
-        return { success: false, message: 'Invalid identity type.' };
+      return { success: false, message: 'Invalid identity type.' };
     }
 
     license.updatedAt = new Date().toISOString();
-    licenses[licenseIndex] = license;
-    await saveLicenses(licenses);
+    licenses[idx] = license;
+    await writeFileAtomic("licenses.json", licenses);
+    invalidateCache("licenses.json");
     return { success: true, license };
+  });
 }
 
 async function updateLicensesByPlatformId(platform, platformUserId, discordId) {
-    if (!platform || !platformUserId || !discordId) {
-        return { success: false, message: 'Missing required parameters.'};
-    }
-    const licenses = await getLicenses();
+  if (!platform || !platformUserId || !discordId) {
+    return { success: false, message: 'Missing required parameters.' };
+  }
+
+  return await withFileLock("licenses.json", async () => {
+    const licenses = await readFile("licenses.json", []);
     const products = await getProducts();
     let updatedCount = 0;
 
-    const currentlyLinkedLicense = licenses.find(l => 
-        l.platform === platform && 
-        l.platformUserId === platformUserId &&
-        l.discordId !== discordId
+    const currentlyLinkedLicense = licenses.find(l =>
+      l.platform === platform &&
+      l.platformUserId === platformUserId &&
+      l.discordId !== discordId
     );
 
     if (currentlyLinkedLicense) {
-        const oldUserId = currentlyLinkedLicense.discordId;
-        licenses.forEach(license => {
-            if (license.discordId === oldUserId && license.platform === platform && license.platformUserId === platformUserId) {
-                license.platformUserId = undefined;
-                license.updatedAt = new Date().toISOString();
-            }
-        });
+      const oldUserId = currentlyLinkedLicense.discordId;
+      for (const license of licenses) {
+        if (license.discordId === oldUserId && license.platform === platform && license.platformUserId === platformUserId) {
+          license.platformUserId = undefined;
+          license.updatedAt = new Date().toISOString();
+        }
+      }
     }
 
-
     const userProducts = new Set();
-    licenses.forEach(l => {
-        if (l.platform === platform && l.platformUserId === platformUserId) {
-            const product = products.find(p => p.id === l.productId);
-            if (product?.builtByBitResourceId) {
-                userProducts.add(product.builtByBitResourceId);
-            }
-        }
-    });
+    for (const l of licenses) {
+      if (l.platform === platform && l.platformUserId === platformUserId) {
+        const product = products.find(p => p.id === l.productId);
+        if (product?.builtByBitResourceId) userProducts.add(product.builtByBitResourceId);
+      }
+    }
 
-    for (let i = 0; i < licenses.length; i++) {
-        const product = products.find(p => p.id === licenses[i].productId);
-        if (product?.builtByBitResourceId && userProducts.has(product.builtByBitResourceId) && licenses[i].discordId === discordId) {
-             if (licenses[i].platformUserId !== platformUserId) {
-                licenses[i].platform = platform;
-                licenses[i].platformUserId = platformUserId;
-                licenses[i].updatedAt = new Date().toISOString();
-                updatedCount++;
-            }
+    for (const license of licenses) {
+      const product = products.find(p => p.id === license.productId);
+      if (product?.builtByBitResourceId && userProducts.has(product.builtByBitResourceId) && license.discordId === discordId) {
+        if (license.platformUserId !== platformUserId) {
+          license.platform = platform;
+          license.platformUserId = platformUserId;
+          license.updatedAt = new Date().toISOString();
+          updatedCount++;
         }
+      }
     }
 
     if (updatedCount > 0 || currentlyLinkedLicense) {
-        await saveLicenses(licenses);
+      await writeFileAtomic("licenses.json", licenses);
+      invalidateCache("licenses.json");
     }
     return { success: true, updatedCount };
+  });
 }
 
 
-async function getVouchers() { return await readFile("vouchers.json", []);}
-async function saveVouchers(vouchers) { await writeFile("vouchers.json", vouchers);}
+async function getVouchers() { return await readFile("vouchers.json", []); }
 
-async function getBlacklist() { return await readFile("blacklist.json", { ips: [], hwids: [], discordIds: [] });}
+async function saveVouchers(vouchers) {
+  await withFileLock("vouchers.json", () => writeFileAtomic("vouchers.json", vouchers));
+}
+
+async function getBlacklist() { return await readFile("blacklist.json", { ips: [], hwids: [], discordIds: [] }); }
 
 const discordUserCache = new Map();
+const DISCORD_CACHE_TTL = 3600_000;
+
 async function fetchDiscordUser(userId) {
-    if (!userId || userId === 'N/A') return null;
+  if (!userId || userId === 'N/A' || userId === 'unlinked') return null;
 
-    let token = process.env.DISCORD_BOT_TOKEN;
-     if (!token) {
-        console.warn("Discord bot token is not configured in .env. Cannot fetch user.");
-        return null;
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) return null;
+
+  const cached = discordUserCache.get(userId);
+  if (cached && Date.now() < cached.exp) return cached.data;
+
+  try {
+    const response = await fetch(`https://discord.com/api/users/${userId}`, {
+      headers: { Authorization: `Bot ${token}` },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) discordUserCache.set(userId, { data: null, exp: Date.now() + DISCORD_CACHE_TTL });
+      return null;
     }
 
-    if (discordUserCache.has(userId)) {
-        return discordUserCache.get(userId);
-    }
-    
-    try {
-        const response = await fetch(`https://discord.com/api/users/${userId}`, {
-            headers: { Authorization: `Bot ${token}` },
-        });
+    const userData = await response.json();
+    const user = {
+      id: userData.id,
+      username: userData.username,
+      avatar: userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : null
+    };
 
-        if (!response.ok) {
-            console.error(`Discord API responded with ${response.status} for user ${userId}`);
-            return null;
-        }
-
-        const userData = await response.json();
-        const user = {
-            id: userData.id,
-            username: userData.username,
-            avatar: userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : null
-        };
-
-        discordUserCache.set(userId, user);
-        return user;
-    } catch (error) {
-        console.error("Error fetching Discord user:", error);
-        return null;
-    }
+    discordUserCache.set(userId, { data: user, exp: Date.now() + DISCORD_CACHE_TTL });
+    return user;
+  } catch {
+    return null;
+  }
 }
 
 
 module.exports = {
-    getProducts,
-    getLicenses,
-    saveLicenses,
-    createLicense,
-    updateLicenseStatus,
-    getVouchers,
-    saveVouchers,
-    getBlacklist,
-    fetchDiscordUser,
-    addSubUserToLicense,
-    removeSubUserFromLicense,
-    renewLicense,
-    resetLicenseIdentities,
-    addLicenseIdentity,
-    updateLicensesByPlatformId
+  getProducts,
+  getLicenses,
+  saveLicenses,
+  createLicense,
+  updateLicenseStatus,
+  getVouchers,
+  saveVouchers,
+  getBlacklist,
+  fetchDiscordUser,
+  addSubUserToLicense,
+  removeSubUserFromLicense,
+  renewLicense,
+  resetLicenseIdentities,
+  addLicenseIdentity,
+  updateLicensesByPlatformId
 };

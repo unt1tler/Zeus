@@ -5,8 +5,7 @@ import { BlacklistClient } from "@/components/blacklist/BlacklistClient";
 import type { BlacklistedUser } from "@/lib/types";
 
 export default async function BlacklistPage() {
-  const blacklist = await getBlacklist();
-  const allLogs = await getLogs();
+  const [blacklist, allLogs] = await Promise.all([getBlacklist(), getLogs()]);
 
   const blacklistedLogs = allLogs.filter(log => 
     (log.reason?.toLowerCase().includes('blacklist'))
