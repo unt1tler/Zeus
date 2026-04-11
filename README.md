@@ -124,7 +124,6 @@ Runs the Next.js server and Discord bot in production.
 <details>
 <summary>Panel Screenshots~</summary>
 
-<img width="1885" height="864" alt="Screenshot_1" src="https://github.com/user-attachments/assets/94f2b992-10c9-4357-ac5e-b0fffef050ef" /><img width="1575" height="861" alt="Screenshot_3" src="https://github.com/user-attachments/assets/cb12564f-1b83-42a0-b453-fcb87d4b623d" />
 <img width="1902" height="863" alt="Screenshot_2" src="https://github.com/user-attachments/assets/a57c7975-60ce-48d2-84ac-5413306887f2" />
 <img width="1900" height="867" alt="Screenshot_5" src="https://github.com/user-attachments/assets/2e6d5e1c-db2b-4c89-8481-7e2ab8cea113" />
 <img width="1900" height="857" alt="Screenshot_4" src="https://github.com/user-attachments/assets/bf0d5392-bacc-4501-8bfb-90d62a875810" />
