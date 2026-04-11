@@ -260,7 +260,7 @@ export function LicenseManagementClient({
     const term = filter.term.toLowerCase();
     
     return licenses.filter((l) => {
-        const product = getProductById(l.productId);
+        const product = products.find((candidate) => candidate.id === l.productId);
         switch(filter.type) {
             case "productName":
                 return l.productName.toLowerCase().includes(term);
@@ -278,9 +278,9 @@ export function LicenseManagementClient({
                 return true;
         }
     });
-  }, [licenses, filter]);
-  
-  const getProductById = (id: string) => products.find(p => p.id === id);
+  }, [licenses, filter, products]);
+
+  const getProductById = (id: string) => products.find((product) => product.id === id);
 
 
   return (

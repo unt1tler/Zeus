@@ -1,21 +1,62 @@
-
 "use server";
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getProducts, saveProducts, getLicenses, saveLicenses, getSettings, saveSettings, addLog, getBlacklist, saveBlacklist, getVouchers, saveVouchers, fetchDiscordUser } from "./data";
-import type { License, Product, Settings, Voucher, AdminApiEndpoints, DiscordBotSettings, BotStatus, ValidationResponseSettings } from "./types";
-import { exec, spawn } from "child_process";
-import util from "util";
+import { getProducts, saveProducts, getLicenses, saveLicenses, getSettings, saveSettings, addLog, getBlacklist, saveBlacklist, getVouchers, saveVouchers, fetchDiscordUser, updateProducts, updateLicenses } from "./data";
+import type { License, Product, Voucher, BotStatus, Settings } from "./types";
+import {
+  ADMIN_SESSION_COOKIE,
+  createAdminSessionCookieValue,
+  getAdminSessionMaxAge,
+  requireAdminSession,
+  timingSafeCompare,
+  verifySignedCookie,
+} from "./auth";
 import fs from "fs/promises";
 import path from "path";
 import { unstable_noStore as noStore } from 'next/cache';
 import { sendWebhook } from "./logging";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import crypto from "crypto";
+import { settingsUpdateSchema } from "./settings-validation";
+import { extractClientIp } from "./utils";
 
-const execAsync = util.promisify(exec);
-const botPidPath = path.join(process.cwd(), 'src', 'bot', 'bot.pid');
+const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_BLOCK_DURATION = 300_000; // 5 min
+
+type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends Array<infer U>
+    ? Array<U>
+    : T[K] extends object
+      ? DeepPartial<T[K]>
+      : T[K];
+};
+
+function mergeDeep<T>(target: T, source: DeepPartial<T>): T {
+  const output = { ...target } as Record<string, unknown>;
+
+  for (const [key, value] of Object.entries(source)) {
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      typeof output[key] === "object" &&
+      output[key] !== null &&
+      !Array.isArray(output[key])
+    ) {
+      output[key] = mergeDeep(
+        output[key] as Record<string, unknown>,
+        value as Record<string, unknown>
+      );
+    } else {
+      output[key] = value;
+    }
+  }
+
+  return output as T;
+}
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -31,21 +72,49 @@ export async function login(values: z.infer<typeof loginSchema>) {
 
   const { email, password } = validatedFields.data;
 
-  if (email === process.env.LOGIN_EMAIL && password === process.env.LOGIN_PASSWORD) {
-    cookies().set("session", process.env.SESSION_SECRET!, {
+  const headersList = await headers();
+  const ip = extractClientIp(headersList, { trustInternalHeader: true });
+  const now = Date.now();
+  const attempts = loginAttempts.get(ip);
+
+  if (attempts && now < attempts.blockedUntil) {
+    const secsLeft = Math.ceil((attempts.blockedUntil - now) / 1000);
+    return { error: `Too many attempts. Try again in ${secsLeft}s.` };
+  }
+
+  const envEmail = process.env.LOGIN_EMAIL || '';
+  const envPassword = process.env.LOGIN_PASSWORD || '';
+
+  if (timingSafeCompare(email, envEmail) && timingSafeCompare(password, envPassword)) {
+    const sessionCookieValue = createAdminSessionCookieValue();
+    if (!sessionCookieValue) {
+      return { error: "SESSION_SECRET is not configured." };
+    }
+
+    loginAttempts.delete(ip);
+    (await cookies()).set(ADMIN_SESSION_COOKIE, sessionCookieValue, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 60 * 60 * 24 * 7, // 1 week
+      sameSite: 'lax',
+      maxAge: getAdminSessionMaxAge(),
       path: '/',
     });
     redirect('/');
   }
 
+  const current = loginAttempts.get(ip) || { count: 0, blockedUntil: 0 };
+  current.count++;
+  if (current.count >= MAX_LOGIN_ATTEMPTS) {
+    current.blockedUntil = now + LOGIN_BLOCK_DURATION;
+    current.count = 0;
+  }
+  loginAttempts.set(ip, current);
+
   return { error: "Invalid email or password." };
 }
 
 export async function logout() {
-  cookies().delete('session');
+  (await cookies()).delete(ADMIN_SESSION_COOKIE);
   redirect('/admin/login');
 }
 
@@ -58,6 +127,8 @@ const productSchema = z.object({
 });
 
 export async function createProduct(values: z.infer<typeof productSchema>) {
+  await requireAdminSession();
+
   const validatedFields = productSchema.safeParse(values);
 
   if (!validatedFields.success) {
@@ -82,7 +153,7 @@ export async function createProduct(values: z.infer<typeof productSchema>) {
   
   const settings = await getSettings();
   if (settings.logging.enabled && settings.logging.logLicenseCreations) {
-    await sendWebhook({
+    sendWebhook({
         title: 'Product Created',
         description: `A new product has been created: **${newProduct.name}**`,
         color: 0x22c55e,
@@ -92,9 +163,8 @@ export async function createProduct(values: z.infer<typeof productSchema>) {
             { name: 'Price', value: `$${newProduct.price.toFixed(2)}`, inline: true },
             { name: 'HWID Protection', value: newProduct.hwidProtection ? 'Enabled' : 'Disabled', inline: true },
         ]
-    });
+    }, settings.logging);
   }
-
 
   revalidatePath("/products");
   revalidatePath("/");
@@ -102,6 +172,8 @@ export async function createProduct(values: z.infer<typeof productSchema>) {
 }
 
 export async function updateProduct(productId: string, values: z.infer<typeof productSchema>) {
+  await requireAdminSession();
+
   const validatedFields = productSchema.safeParse(values);
 
   if (!validatedFields.success) {
@@ -131,7 +203,7 @@ export async function updateProduct(productId: string, values: z.infer<typeof pr
   
   const settings = await getSettings();
   if (settings.logging.enabled && settings.logging.logLicenseUpdates) {
-    await sendWebhook({
+    sendWebhook({
       title: 'Product Updated',
       description: `Product **${product.name}** has been updated.`,
       color: 0x3b82f6,
@@ -141,7 +213,7 @@ export async function updateProduct(productId: string, values: z.infer<typeof pr
         { name: 'New Price', value: `$${product.price.toFixed(2)}`, inline: true },
         { name: 'HWID Protection', value: product.hwidProtection ? 'Enabled' : 'Disabled', inline: true },
       ]
-    });
+    }, settings.logging);
   }
 
   revalidatePath("/products");
@@ -149,27 +221,23 @@ export async function updateProduct(productId: string, values: z.infer<typeof pr
   return { success: true };
 }
 
-
 export async function deleteProduct(productId: string) {
-    let products = await getProducts();
-    let licenses = await getLicenses();
-    
-    const productToDelete = products.find(p => p.id === productId);
-    
-    products = products.filter(p => p.id !== productId);
-    licenses = licenses.filter(l => l.productId !== productId);
+    await requireAdminSession();
 
-    await saveProducts(products);
-    await saveLicenses(licenses);
+    const products = await getProducts();
+    const productToDelete = products.find(p => p.id === productId);
+
+    await updateProducts(p => p.filter(prod => prod.id !== productId));
+    await updateLicenses(l => l.filter(lic => lic.productId !== productId));
 
     const settings = await getSettings();
     if (settings.logging.enabled && settings.logging.logLicenseUpdates && productToDelete) {
-        await sendWebhook({
+        sendWebhook({
             title: 'Product Deleted',
             description: `Product **${productToDelete.name}** and all of its associated licenses have been deleted.`,
             color: 0xef4444,
             timestamp: new Date().toISOString(),
-        });
+        }, settings.logging);
     }
 
     revalidatePath("/products");
@@ -178,40 +246,62 @@ export async function deleteProduct(productId: string) {
     return { success: true };
 }
 
-export async function createLicense(values: any) {
-    const licenses = await getLicenses();
-    const user = await fetchDiscordUser(values.discordId);
+const createLicenseSchema = z.object({
+    productId: z.string().min(1),
+    discordId: z.string().min(1),
+    platform: z.string().optional().default('custom'),
+    platformUserId: z.string().optional(),
+    discordUsername: z.string().optional(),
+    email: z.string().email().optional().or(z.literal('')),
+    subUserDiscordIds: z.array(z.string()).optional().default([]),
+    expiresAt: z.string().nullable().optional().default(null),
+    maxIps: z.number().optional().default(1),
+    maxHwids: z.number().optional().default(1),
+    source: z.enum(['zeus', 'builtbybit-placeholder', 'builtbybit-webhook']).optional().default('zeus'),
+});
+
+export async function createLicense(values: z.infer<typeof createLicenseSchema>) {
+    await requireAdminSession();
+
+    const parsed = createLicenseSchema.safeParse(values);
+    if (!parsed.success) {
+        return { success: false, errors: parsed.error.flatten().fieldErrors };
+    }
+    const v = parsed.data;
+    const user = await fetchDiscordUser(v.discordId);
     
     const newLicense: License = {
       id: crypto.randomUUID(),
       key: `LF-${crypto.randomUUID().toUpperCase()}`,
-      productId: values.productId,
-      platform: values.platform,
-      platformUserId: values.platformUserId,
-      discordId: values.discordId,
-      discordUsername: user?.username || values.discordUsername,
-      email: values.email,
-      subUserDiscordIds: values.subUserDiscordIds || [],
-      expiresAt: values.expiresAt,
-      maxIps: values.maxIps,
-      maxHwids: values.maxHwids,
+      productId: v.productId,
+      platform: v.platform,
+      platformUserId: v.platformUserId,
+      discordId: v.discordId,
+      discordUsername: user?.username || v.discordUsername,
+      email: v.email,
+      subUserDiscordIds: v.subUserDiscordIds || [],
+      expiresAt: v.expiresAt,
+      maxIps: v.maxIps,
+      maxHwids: v.maxHwids,
       status: 'active',
       allowedIps: [],
       allowedHwids: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       validations: 0,
-      source: values.source || 'zeus',
+      source: v.source || 'zeus',
     };
 
-    licenses.unshift(newLicense);
-    await saveLicenses(licenses);
+    await updateLicenses(licenses => {
+      licenses.unshift(newLicense);
+      return licenses;
+    });
     
     const settings = await getSettings();
     if (settings.logging.enabled && settings.logging.logLicenseCreations) {
         const products = await getProducts();
         const product = products.find(p => p.id === newLicense.productId);
-        await sendWebhook({
+        sendWebhook({
             title: 'License Created',
             description: `A new license was created for **${product?.name || 'Unknown Product'}**.`,
             color: 0x22c55e,
@@ -222,21 +312,22 @@ export async function createLicense(values: any) {
                 { name: 'Source', value: newLicense.source || 'Manual', inline: true },
                 { name: 'Expires', value: newLicense.expiresAt ? new Date(newLicense.expiresAt).toLocaleDateString() : 'Never', inline: true},
             ]
-        });
+        }, settings.logging);
     }
-
 
     revalidatePath('/licenses');
     revalidatePath('/');
     revalidatePath('/customers');
     revalidatePath('/records');
-    if (values.discordId) {
-        revalidatePath(`/customers/${values.discordId}`);
+    if (v.discordId) {
+        revalidatePath(`/customers/${v.discordId}`);
     }
     return { success: true, license: newLicense };
 }
 
 export async function updateLicense(key: string, formData: FormData) {
+    await requireAdminSession();
+
     const licenses = await getLicenses();
     const licenseIndex = licenses.findIndex(l => l.key === key);
 
@@ -254,13 +345,12 @@ export async function updateLicense(key: string, formData: FormData) {
     license.maxHwids = Number(data.maxHwids);
     license.updatedAt = new Date().toISOString();
 
-    
     licenses[licenseIndex] = license;
     await saveLicenses(licenses);
     
     const settings = await getSettings();
     if (settings.logging.enabled && settings.logging.logLicenseUpdates) {
-        await sendWebhook({
+        sendWebhook({
             title: 'License Updated',
             description: `License \`${license.key}\` has been updated.`,
             color: 0x3b82f6,
@@ -270,9 +360,8 @@ export async function updateLicense(key: string, formData: FormData) {
                 { name: 'New Max IPs', value: String(license.maxIps), inline: true },
                 { name: 'New Max HWIDs', value: String(license.maxHwids), inline: true },
             ]
-        });
+        }, settings.logging);
     }
-
 
     revalidatePath('/licenses');
     revalidatePath('/');
@@ -285,22 +374,16 @@ export async function updateLicense(key: string, formData: FormData) {
 }
 
 export async function updateClientLicense(key: string, newAllowedIps: string[], newAllowedHwids: string[]) {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const userCookie = cookieStore.get('user');
 
     if (!userCookie?.value) {
         return { success: false, message: 'Authentication required.' };
     }
 
-    let user;
-    try {
-        user = JSON.parse(userCookie.value);
-    } catch {
+    const user = verifySignedCookie(userCookie.value);
+    if (!user) {
         return { success: false, message: 'Invalid session.' };
-    }
-
-    if (!user || !user.id) {
-        return { success: false, message: 'Invalid user session.' };
     }
 
     const licenses = await getLicenses();
@@ -311,19 +394,30 @@ export async function updateClientLicense(key: string, newAllowedIps: string[], 
     }
 
     const license = licenses[licenseIndex];
-    
-    // **CRITICAL SECURITY CHECK**
+
     const isOwner = license.discordId === user.id;
     const isSubUser = (license.subUserDiscordIds || []).includes(user.id);
-    
+
     if (!isOwner && !isSubUser) {
         return { success: false, message: 'You are not authorized to modify this license.' };
     }
 
-    license.allowedIps = newAllowedIps;
-    license.allowedHwids = newAllowedHwids;
+    if (license.maxIps !== -1 && license.maxIps !== -2 && newAllowedIps.length > license.maxIps) {
+        return { success: false, message: `Cannot exceed max IP limit of ${license.maxIps}.` };
+    }
+    if (license.maxHwids !== -1 && newAllowedHwids.length > license.maxHwids) {
+        return { success: false, message: `Cannot exceed max HWID limit of ${license.maxHwids}.` };
+    }
+
+    const currentIpSet = new Set(license.allowedIps);
+    const currentHwidSet = new Set(license.allowedHwids);
+    const filteredIps = newAllowedIps.filter(ip => currentIpSet.has(ip));
+    const filteredHwids = newAllowedHwids.filter(hwid => currentHwidSet.has(hwid));
+
+    license.allowedIps = filteredIps;
+    license.allowedHwids = filteredHwids;
     license.updatedAt = new Date().toISOString();
-    
+
     licenses[licenseIndex] = license;
     await saveLicenses(licenses);
 
@@ -331,37 +425,33 @@ export async function updateClientLicense(key: string, newAllowedIps: string[], 
     return { success: true };
 }
 
+export async function updateSettings(values: unknown) {
+  await requireAdminSession();
 
-
-export async function updateSettings(values: any) {
   try {
-    const currentSettings = await getSettings();
-    
-    const mergeDeep = (target: any, source: any): any => {
-      const output = { ...target };
-      if (typeof target === 'object' && target !== null && typeof source === 'object' && source !== null) {
-        Object.keys(source).forEach(key => {
-          if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
-            if (!(key in target)) {
-              Object.assign(output, { [key]: source[key] });
-            } else {
-              output[key] = mergeDeep(target[key], source[key]);
-            }
-          } else {
-            Object.assign(output, { [key]: source[key] });
-          }
-        });
-      }
-      return output;
+    const parsedValues = settingsUpdateSchema.safeParse(values);
+    if (!parsedValues.success) {
+      return {
+        success: false,
+        message: "Invalid settings payload.",
+        errors: parsedValues.error.flatten().fieldErrors,
+      };
     }
 
-    const newSettings = mergeDeep(currentSettings, values);
+    if (Object.keys(parsedValues.data).length === 0) {
+      return { success: false, message: "No valid settings provided." };
+    }
+
+    const currentSettings = await getSettings();
+    const newSettings = mergeDeep(currentSettings, parsedValues.data as DeepPartial<Settings>);
 
     await saveSettings(newSettings);
 
     const botConfigPath = path.join(process.cwd(), "src", "bot", "config.json");
     if (newSettings.discordBot) {
-        await fs.writeFile(botConfigPath, JSON.stringify(newSettings.discordBot, null, 2));
+        const tmpPath = `${botConfigPath}.tmp-${process.pid}-${crypto.randomUUID()}`;
+        await fs.writeFile(tmpPath, JSON.stringify(newSettings.discordBot, null, 2));
+        await fs.rename(tmpPath, botConfigPath);
     }
 
     revalidatePath("/settings", "layout");
@@ -375,6 +465,8 @@ export async function updateSettings(values: any) {
 }
 
 export async function updateCustomerEmail(discordId: string, email: string) {
+    await requireAdminSession();
+
     const emailSchema = z.string().email("Invalid email address.").optional().or(z.literal(''));
     const validation = emailSchema.safeParse(email);
 
@@ -403,8 +495,9 @@ export async function updateCustomerEmail(discordId: string, email: string) {
     return { success: true };
 }
 
-
 export async function generateNewApiKey() {
+    await requireAdminSession();
+
     const settings = await getSettings();
     settings.apiKey = `LF-ADMIN-${crypto.randomUUID()}`;
     await saveSettings(settings);
@@ -413,23 +506,25 @@ export async function generateNewApiKey() {
 }
 
 export async function deleteLicense(key: string) {
-  let licenses = await getLicenses();
-  const licenseToDelete = licenses.find(l => l.key === key);
-  licenses = licenses.filter(l => l.key !== key);
-  await saveLicenses(licenses);
+  await requireAdminSession();
+
+  let licenseToDelete: License | undefined;
+  await updateLicenses(licenses => {
+    licenseToDelete = licenses.find(l => l.key === key);
+    return licenses.filter(l => l.key !== key);
+  });
   
   const settings = await getSettings();
   if (settings.logging.enabled && settings.logging.logLicenseUpdates && licenseToDelete) {
     const products = await getProducts();
-    const product = products.find(p => p.id === licenseToDelete.productId);
-    await sendWebhook({
+    const product = products.find(p => p.id === licenseToDelete!.productId);
+    sendWebhook({
         title: 'License Deleted',
         description: `License \`${licenseToDelete.key}\` for product **${product?.name || 'Unknown'}** has been permanently deleted.`,
         color: 0xef4444,
         timestamp: new Date().toISOString(),
-    });
+    }, settings.logging);
   }
-
 
   revalidatePath('/licenses');
   revalidatePath('/');
@@ -442,33 +537,39 @@ export async function deleteLicense(key: string) {
 }
 
 export async function updateLicenseStatus(key: string, status: 'active' | 'inactive' | 'expired') {
-    const licenses = await getLicenses();
-    const licenseIndex = licenses.findIndex(l => l.key === key);
+    await requireAdminSession();
 
-    if (licenseIndex === -1) {
+    let updatedLicense: License | undefined;
+    await updateLicenses(licenses => {
+      const idx = licenses.findIndex(l => l.key === key);
+      if (idx !== -1) {
+        licenses[idx].status = status;
+        licenses[idx].updatedAt = new Date().toISOString();
+        updatedLicense = licenses[idx];
+      }
+      return licenses;
+    });
+
+    if (!updatedLicense) {
         return { success: false, message: "License not found." };
     }
 
-    licenses[licenseIndex].status = status;
-    licenses[licenseIndex].updatedAt = new Date().toISOString();
-    await saveLicenses(licenses);
-
     const settings = await getSettings();
     if (settings.logging.enabled && settings.logging.logLicenseUpdates) {
-        await sendWebhook({
+        sendWebhook({
             title: 'License Status Updated',
             description: `License \`${key}\` status set to **${status}**.`,
             color: status === 'active' ? 0x22c55e : 0xfb923c,
             timestamp: new Date().toISOString(),
-        });
+        }, settings.logging);
     }
 
     revalidatePath('/licenses');
     revalidatePath('/');
     revalidatePath('/customers');
     revalidatePath('/records');
-    revalidatePath(`/customers/${licenses[licenseIndex].discordId}`);
-    return { success: true, license: licenses[licenseIndex] };
+    revalidatePath(`/customers/${updatedLicense.discordId}`);
+    return { success: true, license: updatedLicense };
 }
 
 const mockLocations: { city: string; country: string; countryCode: string; ip: string; }[] = [
@@ -481,8 +582,9 @@ const mockLocations: { city: string; country: string; countryCode: string; ip: s
     { city: "Mumbai", country: "India", countryCode: "IN", ip: "115.34.56.78" },
 ];
 
-
 export async function simulateValidationRequest(status: 'success' | 'failure') {
+  await requireAdminSession();
+
   const licenses = await getLicenses();
   const products = await getProducts();
   const randomLocation = mockLocations[Math.floor(Math.random() * mockLocations.length)];
@@ -530,6 +632,8 @@ const blacklistSchema = z.object({
 });
 
 export async function addToBlacklist(formData: FormData) {
+  await requireAdminSession();
+
   const validatedFields = blacklistSchema.safeParse({
     type: formData.get('type'),
     value: formData.get('value'),
@@ -559,7 +663,7 @@ export async function addToBlacklist(formData: FormData) {
   
   const settings = await getSettings();
   if (settings.logging.enabled && settings.logging.logBlacklistActions) {
-    await sendWebhook({
+    sendWebhook({
       title: 'Item Added to Blacklist',
       description: `An item has been manually added to the blacklist.`,
       color: 0xfb923c,
@@ -568,7 +672,7 @@ export async function addToBlacklist(formData: FormData) {
         { name: 'Type', value: type, inline: true },
         { name: 'Value', value: `\`${value}\``, inline: true }
       ]
-    });
+    }, settings.logging);
   }
 
   revalidatePath('/blacklist');
@@ -579,6 +683,8 @@ export async function addToBlacklist(formData: FormData) {
 }
 
 export async function removeFromBlacklist(type: 'ip' | 'hwid' | 'discordId', value: string) {
+  await requireAdminSession();
+
   const blacklist = await getBlacklist();
 
   if (type === 'ip') {
@@ -593,7 +699,7 @@ export async function removeFromBlacklist(type: 'ip' | 'hwid' | 'discordId', val
   
   const settings = await getSettings();
   if (settings.logging.enabled && settings.logging.logBlacklistActions) {
-    await sendWebhook({
+    sendWebhook({
       title: 'Item Removed from Blacklist',
       description: `An item has been manually removed from the blacklist.`,
       color: 0x3b82f6,
@@ -602,9 +708,8 @@ export async function removeFromBlacklist(type: 'ip' | 'hwid' | 'discordId', val
         { name: 'Type', value: type, inline: true },
         { name: 'Value', value: `\`${value}\``, inline: true }
       ]
-    });
+    }, settings.logging);
   }
-
 
   revalidatePath('/blacklist');
   revalidatePath('/records');
@@ -615,6 +720,8 @@ export async function removeFromBlacklist(type: 'ip' | 'hwid' | 'discordId', val
 }
 
 export async function addSubUserToLicense(key: string, discordId: string) {
+    await requireAdminSession();
+
     const licenses = await getLicenses();
     const licenseIndex = licenses.findIndex(l => l.key === key);
     if (licenseIndex === -1) {
@@ -645,6 +752,8 @@ export async function addSubUserToLicense(key: string, discordId: string) {
 }
 
 export async function removeSubUserFromLicense(key: string, discordId: string) {
+    await requireAdminSession();
+
     const licenses = await getLicenses();
     const licenseIndex = licenses.findIndex(l => l.key === key);
      if (licenseIndex === -1) {
@@ -669,8 +778,9 @@ export async function removeSubUserFromLicense(key: string, discordId: string) {
     return { success: true };
 }
 
-
 export async function blacklistUser(discordId: string) {
+    await requireAdminSession();
+
     const licenses = await getLicenses();
     const blacklist = await getBlacklist();
 
@@ -699,15 +809,14 @@ export async function blacklistUser(discordId: string) {
     const settings = await getSettings();
     if (settings.logging.enabled && settings.logging.logBlacklistActions) {
         const user = await fetchDiscordUser(discordId);
-        await sendWebhook({
+        sendWebhook({
           title: 'User Blacklisted',
           description: `All licenses owned by this user have been deactivated, and all associated IPs/HWIDs have been added to the blacklist.`,
           color: 0xef4444,
           timestamp: new Date().toISOString(),
           fields: [{ name: 'User', value: `${user?.username || 'Unknown'} (\`${discordId}\`)`, inline: false }]
-        });
+        }, settings.logging);
     }
-
 
     revalidatePath('/blacklist');
     revalidatePath('/customers');
@@ -719,9 +828,10 @@ export async function blacklistUser(discordId: string) {
 }
 
 export async function unblacklistUser(discordId: string) {
-    const licenses = await getLicenses();
-    const blacklist = await getBlacklist();
-    const allOtherBlacklistedUsersLicenses = await getLicenses({ filterOut: [discordId] });
+    await requireAdminSession();
+
+    const [licenses, blacklist] = await Promise.all([getLicenses(), getBlacklist()]);
+    const allOtherBlacklistedUsersLicenses = licenses.filter(l => l.discordId !== discordId);
 
     if (!blacklist.discordIds.includes(discordId)) {
         return { success: false, message: "User is not blacklisted." };
@@ -755,13 +865,13 @@ export async function unblacklistUser(discordId: string) {
     const settings = await getSettings();
     if (settings.logging.enabled && settings.logging.logBlacklistActions) {
         const user = await fetchDiscordUser(discordId);
-        await sendWebhook({
+        sendWebhook({
           title: 'User Unblacklisted',
           description: `This user has been removed from the blacklist. Associated IPs/HWIDs that are not tied to other blacklisted users may have been removed. Their licenses remain inactive.`,
           color: 0x22c55e,
           timestamp: new Date().toISOString(),
           fields: [{ name: 'User', value: `${user?.username || 'Unknown'} (\`${discordId}\`)`, inline: false }]
-        });
+        }, settings.logging);
     }
 
     revalidatePath('/blacklist');
@@ -774,6 +884,8 @@ export async function unblacklistUser(discordId: string) {
 }
 
 export async function blacklistLicenseIdentifiers(key: string) {
+    await requireAdminSession();
+
     const licenses = await getLicenses();
     const license = licenses.find(l => l.key === key);
 
@@ -795,12 +907,12 @@ export async function blacklistLicenseIdentifiers(key: string) {
     
     const settings = await getSettings();
     if (settings.logging.enabled && settings.logging.logBlacklistActions) {
-        await sendWebhook({
+        sendWebhook({
           title: 'License Identifiers Blacklisted',
           description: `All IPs/HWIDs on license \`${license.key}\` have been added to the blacklist.`,
           color: 0xfb923c,
           timestamp: new Date().toISOString(),
-        });
+        }, settings.logging);
     }
 
     revalidatePath('/blacklist');
@@ -809,8 +921,9 @@ export async function blacklistLicenseIdentifiers(key: string) {
     return { success: true };
 }
 
-
 export async function renewLicense(formData: FormData) {
+    await requireAdminSession();
+
     const renewSchema = z.object({
       key: z.string().min(1, "License key is required."),
       expiresAt: z.date({ required_error: "New expiration date is required." }),
@@ -843,12 +956,12 @@ export async function renewLicense(formData: FormData) {
     
     const settings = await getSettings();
     if (settings.logging.enabled && settings.logging.logLicenseUpdates) {
-        await sendWebhook({
+        sendWebhook({
           title: 'License Renewed',
           description: `License \`${key}\` has been renewed until **${expiresAt.toLocaleDateString()}**.`,
           color: 0x3b82f6,
           timestamp: new Date().toISOString(),
-        });
+        }, settings.logging);
     }
 
     revalidatePath('/licenses');
@@ -861,6 +974,8 @@ export async function renewLicense(formData: FormData) {
 }
 
 export async function createVoucher(productId: string, duration: string) {
+    await requireAdminSession();
+
     const products = await getProducts();
     if (!products.find(p => p.id === productId)) {
         return { success: false, message: "Product not found." };
@@ -886,7 +1001,7 @@ export async function createVoucher(productId: string, duration: string) {
     const settings = await getSettings();
     if (settings.logging.enabled && settings.logging.logLicenseCreations) {
         const product = products.find(p => p.id === productId);
-        await sendWebhook({
+        sendWebhook({
           title: 'Voucher Created',
           description: `A new voucher has been created.`,
           color: 0xa855f7,
@@ -896,7 +1011,7 @@ export async function createVoucher(productId: string, duration: string) {
             { name: 'Product', value: product?.name || 'Unknown', inline: true },
             { name: 'Duration', value: duration, inline: true },
           ],
-        });
+        }, settings.logging);
     }
 
     revalidatePath('/licenses');
@@ -904,6 +1019,8 @@ export async function createVoucher(productId: string, duration: string) {
 }
 
 export async function getBotStatus(): Promise<BotStatus> {
+  await requireAdminSession();
+
   noStore();
   const settings = await getSettings();
   if (!settings.discordBot.enabled) {
@@ -928,6 +1045,8 @@ export async function getBotStatus(): Promise<BotStatus> {
 }
 
 export async function revokeVoucher(code: string) {
+    await requireAdminSession();
+
     const vouchers = await getVouchers();
     
     const voucherToRevoke = vouchers.find(v => v.code === code);
@@ -947,12 +1066,12 @@ export async function revokeVoucher(code: string) {
     if (settings.logging.enabled && settings.logging.logLicenseUpdates) {
         const products = await getProducts();
         const product = products.find(p => p.id === voucherToRevoke.productId);
-        await sendWebhook({
+        sendWebhook({
           title: 'Voucher Revoked',
           description: `Voucher \`${code}\` for **${product?.name || 'Unknown'}** has been revoked.`,
           color: 0xef4444,
           timestamp: new Date().toISOString(),
-        });
+        }, settings.logging);
     }
 
     revalidatePath('/licenses');

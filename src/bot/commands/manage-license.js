@@ -63,8 +63,12 @@ module.exports = {
             }
 
             if (prod?.hwidProtection) {
-                const hwidUsage = `${lic.allowedHwids.length} / ${lic.maxHwids === -1 ? '∞' : lic.maxHwids}`;
-                embed.addFields({ name: '💻 HWIDs Used', value: hwidUsage, inline: true });
+                if (lic.maxHwids === -2) {
+                    embed.addFields({ name: '💻 HWIDs Used', value: 'Disabled', inline: true });
+                } else {
+                    const hwidUsage = `${lic.allowedHwids.length} / ${lic.maxHwids === -1 ? '∞' : lic.maxHwids}`;
+                    embed.addFields({ name: '💻 HWIDs Used', value: hwidUsage, inline: true });
+                }
             }
 
             return embed;
@@ -116,12 +120,12 @@ module.exports = {
             const currentLicenses = await getLicenses();
             const currentProducts = await getProducts();
             license = currentLicenses.find(l => l.key === key);
-            const currentProduct = currentProducts.find(p => p.id === license.productId);
-
 
             if (!license) {
                  return i.reply({ content: 'This license no longer exists.', ephemeral: true });
             }
+
+            const currentProduct = currentProducts.find(p => p.id === license.productId);
             
             const isInteractionUserOwner = license.discordId === i.user.id;
             const isInteractionUserSubUser = (license.subUserDiscordIds || []).includes(i.user.id);

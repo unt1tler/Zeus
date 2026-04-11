@@ -64,19 +64,10 @@ export function BuiltByBitWebhookClient({ settings }: { settings: Settings }) {
 
   const handleSettingsUpdate = (data: z.infer<typeof settingsSchema>) => {
     startTransition(async () => {
-      const formData = new FormData();
-      formData.append('builtByBitWebhookSecret.enabled', data.enabled ? 'on' : 'off');
-      formData.append('builtByBitWebhookSecret.secret', data.secret || '');
-      formData.append('builtByBitWebhookSecret.disableIpProtection', data.disableIpProtection ? 'on' : 'off');
-      formData.append('builtByBitWebhookSecret.maxIps', String(data.maxIps));
-      formData.append('builtByBitWebhookSecret.enableHwidProtection', data.enableHwidProtection ? 'on' : 'off');
-      formData.append('builtByBitWebhookSecret.maxHwids', String(data.maxHwids));
-      
-      if (data.enabled) {
-        formData.append('builtByBitPlaceholder.enabled', 'off');
-      }
-
-      const result = await updateSettings(formData);
+      const result = await updateSettings({
+        builtByBitWebhookSecret: data,
+        ...(data.enabled ? { builtByBitPlaceholder: { enabled: false } } : {}),
+      });
 
       if (result.success) {
         toast({ title: "Success", description: "BuiltByBit webhook settings have been updated." });

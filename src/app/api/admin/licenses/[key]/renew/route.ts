@@ -1,30 +1,15 @@
 
 import { NextResponse } from 'next/server';
-import { getLicenses, saveLicenses, getSettings } from '@/lib/data';
-import { headers } from 'next/headers';
+import { getLicenses, saveLicenses } from '@/lib/data';
+import { checkAdminApiKey } from '@/lib/auth';
 
-async function checkApiKey() {
-    const settings = await getSettings();
-    if (!settings.adminApiEnabled) {
-        return { authorized: false, message: 'Admin API is disabled.' };
-    }
-    const headersList = headers();
-    const apiKey = headersList.get('x-api-key');
-
-    if (!apiKey || apiKey !== settings.apiKey) {
-        return { authorized: false, message: 'Invalid or missing API key.' };
-    }
-    return { authorized: true };
-}
-
-
-export async function PATCH(request: Request, { params }: { params: { key: string } }) {
-  const auth = await checkApiKey();
+export async function PATCH(request: Request, { params }: { params: Promise<{ key: string }> }) {
+  const auth = await checkAdminApiKey('renewLicense');
   if (!auth.authorized) {
-      return NextResponse.json({ message: auth.message }, { status: 401 });
+    return NextResponse.json({ message: auth.message }, { status: 401 });
   }
 
-  const { key } = params;
+  const { key } = await params;
   const body = await request.json();
   const { expiresAt } = body;
 
@@ -38,17 +23,20 @@ export async function PATCH(request: Request, { params }: { params: { key: strin
   if (licenseIndex === -1) {
     return NextResponse.json({ message: "License not found." }, { status: 404 });
   }
-  
+
   try {
     const newExpiryDate = new Date(expiresAt);
+    if (isNaN(newExpiryDate.getTime())) {
+      return NextResponse.json({ message: "Invalid date format for expiresAt." }, { status: 400 });
+    }
+
     licenses[licenseIndex].expiresAt = newExpiryDate.toISOString();
     licenses[licenseIndex].status = 'active';
     licenses[licenseIndex].updatedAt = new Date().toISOString();
-    
+
     await saveLicenses(licenses);
-    
     return NextResponse.json(licenses[licenseIndex]);
-  } catch (error) {
+  } catch {
     return NextResponse.json({ message: "Invalid date format for expiresAt." }, { status: 400 });
   }
 }

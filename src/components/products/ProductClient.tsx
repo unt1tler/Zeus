@@ -141,7 +141,7 @@ export function ProductClient({ products }: { products: Product[] }) {
     } else {
        toast({
         title: "Error",
-        description: result.message || "Failed to delete product.",
+        description: "Failed to delete product.",
         variant: "destructive",
       });
     }

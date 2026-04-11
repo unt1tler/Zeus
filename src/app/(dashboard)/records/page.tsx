@@ -10,9 +10,11 @@ export interface EnrichedValidationLog extends ValidationLog {
 }
 
 export default async function RecordsPage() {
-  const logs: ValidationLog[] = await getLogs();
-  const licenses: License[] = await getLicenses();
-  const blacklist: Blacklist = await getBlacklist();
+  const [logs, licenses, blacklist] = await Promise.all([
+    getLogs(),
+    getLicenses(),
+    getBlacklist(),
+  ]) as [ValidationLog[], License[], Blacklist];
 
   const licenseMap = new Map<string, License>();
   licenses.forEach(l => licenseMap.set(l.key, l));

@@ -5,6 +5,60 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+type HeaderSource = {
+  get(name: string): string | null
+}
+
+export function normalizeIp(raw: string): string {
+  let ip = raw.trim().replace(/^::ffff:/, '');
+  if (ip.includes(':')) {
+    try {
+      const halves = ip.split('::');
+      let groups: string[];
+      if (halves.length === 2) {
+        const left = halves[0] ? halves[0].split(':') : [];
+        const right = halves[1] ? halves[1].split(':') : [];
+        const fill = 8 - left.length - right.length;
+        groups = [...left, ...Array(fill).fill('0'), ...right];
+      } else {
+        groups = ip.split(':');
+      }
+      ip = groups.map(g => g.padStart(4, '0')).join(':').toLowerCase();
+    } catch {}
+  }
+  return ip;
+}
+
+function shouldTrustForwardedFor(): boolean {
+  return process.env.TRUST_X_FORWARDED_FOR === "true";
+}
+
+export function extractClientIp(
+  headers: HeaderSource,
+  options: { trustInternalHeader?: boolean } = {}
+): string {
+  const candidates: Array<string | null | undefined> = [];
+
+  if (options.trustInternalHeader) {
+    candidates.push(headers.get("x-zeus-client-ip"));
+  }
+
+  candidates.push(headers.get("cf-connecting-ip"));
+  candidates.push(headers.get("x-real-ip"));
+
+  if (shouldTrustForwardedFor()) {
+    candidates.push(headers.get("x-forwarded-for")?.split(",")[0]?.trim());
+  }
+
+  for (const value of candidates) {
+    if (value && value.trim()) {
+      return normalizeIp(value);
+    }
+  }
+
+  return "0.0.0.0";
+}
+
 export function hexToHsl(hex: string): [number, number, number] | null {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!result) return null;

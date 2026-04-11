@@ -1,4 +1,3 @@
-
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { getLicenses, getProducts, fetchDiscordUser } = require('../../lib/data-access');
 
@@ -15,33 +14,40 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
 
         try {
-            const licenses = await getLicenses();
-            const products = await getProducts();
+            const [licenses, products] = await Promise.all([getLicenses(), getProducts()]);
+            const productMap = new Map(products.map(p => [p.id, p]));
             const userLicenses = licenses.filter(l => l.discordId === discordId);
 
             if (userLicenses.length === 0) {
                 return interaction.editReply({ content: 'No licenses found for this user.' });
             }
-            
+
             const user = await fetchDiscordUser(discordId);
 
             const embed = new EmbedBuilder()
                 .setTitle(`Licenses for ${user?.username || discordId}`)
-                .setColor('#5865F2');
-            
-            if(user?.avatar) embed.setThumbnail(user.avatar);
+                .setColor('#5865F2')
+                .setTimestamp();
 
-            const fields = userLicenses.map(l => {
-                const product = products.find(p => p.id === l.productId);
+            if (user?.avatar) embed.setThumbnail(user.avatar);
+
+            const capped = userLicenses.slice(0, 20);
+            const fields = capped.map(l => {
+                const product = productMap.get(l.productId);
+                const maskedKey = `${l.key.substring(0, 6)}...${l.key.slice(-4)}`;
                 return {
                     name: product?.name || 'Unknown Product',
-                    value: `Key: \`${l.key}\`\nStatus: ${l.status}`
+                    value: `Key: \`${maskedKey}\`\nStatus: ${l.status}`,
+                    inline: true,
                 };
             });
             embed.addFields(...fields);
 
-            await interaction.editReply({ embeds: [embed] });
+            if (userLicenses.length > 20) {
+                embed.setFooter({ text: `Showing 20 of ${userLicenses.length} licenses` });
+            }
 
+            await interaction.editReply({ embeds: [embed] });
         } catch (error) {
             console.error("Error searching licenses:", error);
             await interaction.editReply({ content: 'An error occurred while searching for licenses.' });

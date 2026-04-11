@@ -33,16 +33,15 @@ const editLicenseSchema = z.object({
   expiresAt: z.date().optional().nullable(),
   disableIpProtection: z.boolean().default(false),
   unlimitedIps: z.boolean().default(false),
-  maxIps: z.string().optional(),
+  maxIps: z.coerce.number().min(0).optional(),
   unlimitedHwids: z.boolean().default(false),
   maxHwids: z.coerce.number().min(0).default(1),
 }).transform((data) => {
     if (!data.disableIpProtection && !data.unlimitedIps) {
-        const maxIpsNum = Number(data.maxIps);
-        if (isNaN(maxIpsNum) || maxIpsNum < 0) {
+        if (typeof data.maxIps !== "number" || Number.isNaN(data.maxIps) || data.maxIps < 0) {
             throw new Error("Max IPs must be a positive number.");
         }
-        return { ...data, maxIps: maxIpsNum };
+        return data;
     }
     return { ...data, maxIps: undefined };
 });
@@ -67,7 +66,7 @@ export function EditLicenseForm({ license, products, onSuccess }: EditLicenseFor
       expiresAt: license.expiresAt ? new Date(license.expiresAt) : null,
       disableIpProtection: license.maxIps === -2,
       unlimitedIps: license.maxIps === -1,
-      maxIps: license.maxIps >= 0 ? String(license.maxIps) : "1",
+      maxIps: license.maxIps >= 0 ? license.maxIps : 1,
       unlimitedHwids: license.maxHwids === -1,
       maxHwids: license.maxHwids >= 0 ? license.maxHwids : 1,
     },
@@ -87,7 +86,7 @@ export function EditLicenseForm({ license, products, onSuccess }: EditLicenseFor
     return `Custom Platform ID`;
   }
   
-  async function onSubmit(values: any) {
+  async function onSubmit(values: z.infer<typeof editLicenseSchema>) {
     const formData = new FormData();
     formData.append("platform", values.platform);
     formData.append("platformUserId", values.platformUserId || "");
@@ -112,11 +111,11 @@ export function EditLicenseForm({ license, products, onSuccess }: EditLicenseFor
 
     const result = await updateLicense(license.key, formData);
 
-    if (result?.errors) {
+    if (!result.success) {
        toast({
         variant: "destructive",
         title: "Error updating license",
-        description: "Please check the form for errors and try again.",
+        description: result.message || "Please check the form for errors and try again.",
       });
     } else {
       toast({

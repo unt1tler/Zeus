@@ -1,30 +1,15 @@
 
 import { NextResponse } from 'next/server';
-import { getLicenses, saveLicenses, getSettings } from '@/lib/data';
-import { headers } from 'next/headers';
+import { getLicenses, saveLicenses } from '@/lib/data';
+import { checkAdminApiKey } from '@/lib/auth';
 
-async function checkApiKey() {
-    const settings = await getSettings();
-    if (!settings.adminApiEnabled) {
-        return { authorized: false, message: 'Admin API is disabled.' };
-    }
-    const headersList = headers();
-    const apiKey = headersList.get('x-api-key');
-
-    if (!apiKey || apiKey !== settings.apiKey) {
-        return { authorized: false, message: 'Invalid or missing API key.' };
-    }
-    return { authorized: true };
-}
-
-
-export async function PATCH(request: Request, { params }: { params: { key: string } }) {
-  const auth = await checkApiKey();
+export async function PATCH(request: Request, { params }: { params: Promise<{ key: string }> }) {
+  const auth = await checkAdminApiKey('updateIdentities');
   if (!auth.authorized) {
-      return NextResponse.json({ message: auth.message }, { status: 401 });
+    return NextResponse.json({ message: auth.message }, { status: 401 });
   }
 
-  const { key } = params;
+  const { key } = await params;
   const body = await request.json();
   const { ip, hwid } = body;
 
@@ -43,7 +28,7 @@ export async function PATCH(request: Request, { params }: { params: { key: strin
 
   if (ip) {
     if (!license.allowedIps.includes(ip)) {
-      if (license.maxIps !== -1 && license.allowedIps.length >= license.maxIps) {
+      if (license.maxIps !== -1 && license.maxIps !== -2 && license.allowedIps.length >= license.maxIps) {
         return NextResponse.json({ message: "Maximum number of IPs already reached for this license." }, { status: 409 });
       }
       license.allowedIps.push(ip);
@@ -52,13 +37,14 @@ export async function PATCH(request: Request, { params }: { params: { key: strin
 
   if (hwid) {
     if (!license.allowedHwids.includes(hwid)) {
-      if (license.maxHwids !== -1 && license.allowedHwids.length >= license.maxHwids) {
+      if (license.maxHwids !== -1 && license.maxHwids !== -2 && license.allowedHwids.length >= license.maxHwids) {
         return NextResponse.json({ message: "Maximum number of HWIDs already reached for this license." }, { status: 409 });
       }
       license.allowedHwids.push(hwid);
     }
   }
-  
+
+  license.updatedAt = new Date().toISOString();
   licenses[licenseIndex] = license;
   await saveLicenses(licenses);
 

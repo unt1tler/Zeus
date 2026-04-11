@@ -1,4 +1,3 @@
-
 import { getSettings } from './data';
 import type { Embed } from './types';
 
@@ -8,11 +7,9 @@ interface WebhookPayload {
   embeds?: Embed[];
 }
 
-export async function sendWebhook(embed: Embed) {
-  const settings = await getSettings();
-  if (!settings.logging.enabled || !settings.logging.webhookUrl) {
-    return;
-  }
+export async function sendWebhook(embed: Embed, webhookConfig?: { enabled: boolean; webhookUrl: string }) {
+  const config = webhookConfig ?? (await getSettings()).logging;
+  if (!config?.enabled || !config?.webhookUrl) return;
 
   const payload: WebhookPayload = {
     username: "Zeus Logger",
@@ -20,20 +17,9 @@ export async function sendWebhook(embed: Embed) {
     embeds: [embed],
   };
 
-  try {
-    const response = await fetch(settings.logging.webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ message: 'Failed to parse Discord error response.' }));
-        console.error(`Error sending webhook: ${response.status} ${response.statusText}`, errorBody);
-    }
-  } catch (error) {
-    console.error('Failed to send webhook:', error);
-  }
+  fetch(config.webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
 }

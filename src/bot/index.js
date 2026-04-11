@@ -36,7 +36,19 @@ function readConfig() {
     return defaultConfig;
 }
 
-const config = readConfig();
+let config = readConfig();
+
+// re-read config every 30s so admin changes take effect without restart
+setInterval(() => {
+    try {
+        const updated = readConfig();
+        if (JSON.stringify(updated.adminIds) !== JSON.stringify(config.adminIds)) {
+            console.log('[INFO] Admin IDs updated from config.');
+        }
+        config.adminIds = updated.adminIds;
+        config.commands = updated.commands;
+    } catch {}
+}, 30_000);
 const token = process.env.DISCORD_BOT_TOKEN;
 const internalPanelUrl = process.env.INTERNAL_PANEL_URL;
 const apiKey = process.env.API_KEY;
@@ -104,7 +116,7 @@ if (!config.enabled) {
     process.exit(0);
 }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 
 client.commands = new Collection();

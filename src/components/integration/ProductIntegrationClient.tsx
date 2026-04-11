@@ -12,7 +12,7 @@ interface ProductIntegrationClientProps {
     panelUrl: string;
 }
 
-export function ProductIntegrationClient({ panelUrl }: ProductIntegration_ClientProps) {
+export function ProductIntegrationClient({ panelUrl }: ProductIntegrationClientProps) {
     const [activeTab, setActiveTab] = useState("nodejs");
 
     const endpoint = panelUrl ? `${panelUrl}/api/validate` : `https://<YOUR_APP_URL>/api/validate`;

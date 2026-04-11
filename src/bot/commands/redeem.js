@@ -76,6 +76,9 @@ module.exports = {
                                 await selectInteraction.deferUpdate();
                                 const licenseKeyToRenew = selectInteraction.values[0];
                                 const licenseToRenew = existingLicenses.find(l => l.key === licenseKeyToRenew);
+                                if (!licenseToRenew) {
+                                    return selectInteraction.followUp({ content: 'License no longer exists.', ephemeral: true });
+                                }
                                 const result = await renewLicense(licenseKeyToRenew, voucher.duration);
                                 await handleRenewalResult(selectInteraction, result, voucher, voucherIndex, vouchers, userId, licenseToRenew.id);
                                 await i.editReply({ content: 'Action completed.', components: [] });
@@ -104,13 +107,18 @@ module.exports = {
 
 async function handleRenewalResult(interaction, result, voucher, voucherIndex, vouchers, userId, licenseId) {
      if (result.success) {
-        voucher.isRedeemed = true;
-        voucher.redeemedBy = userId;
-        voucher.redeemedAt = new Date().toISOString();
-        voucher.redeemedForLicenseId = licenseId;
-        voucher.redeemAction = 'renew';
-        vouchers[voucherIndex] = voucher;
-        await saveVouchers(vouchers);
+        // Re-read vouchers to avoid race condition
+        const freshVouchers = await getVouchers();
+        const freshIdx = freshVouchers.findIndex(v => v.code === voucher.code);
+        if (freshIdx === -1 || freshVouchers[freshIdx].isRedeemed) {
+            return interaction.followUp({ content: 'This voucher has already been redeemed by someone else.', ephemeral: true });
+        }
+        freshVouchers[freshIdx].isRedeemed = true;
+        freshVouchers[freshIdx].redeemedBy = userId;
+        freshVouchers[freshIdx].redeemedAt = new Date().toISOString();
+        freshVouchers[freshIdx].redeemedForLicenseId = licenseId;
+        freshVouchers[freshIdx].redeemAction = 'renew';
+        await saveVouchers(freshVouchers);
         
         const products = await getProducts();
         const product = products.find(p => p.id === voucher.productId);
@@ -138,9 +146,12 @@ async function redeemNewLicense(interaction, voucher, voucherIndex, vouchers, us
     if (voucher.duration !== 'lifetime') {
         const amount = parseInt(voucher.duration.slice(0, -1));
         const unit = voucher.duration.slice(-1);
+        if (!Number.isInteger(amount) || amount <= 0 || (unit !== 'm' && unit !== 'y')) {
+            return interaction.editReply({ content: 'Error: This voucher has an invalid duration.' });
+        }
         const date = new Date();
         if (unit === 'm') date.setMonth(date.getMonth() + amount);
-        else if (unit === 'y') date.setFullYear(date.getFullYear() + amount);
+        else date.setFullYear(date.getFullYear() + amount);
         expiresAt = date.toISOString();
     }
     
@@ -151,13 +162,18 @@ async function redeemNewLicense(interaction, voucher, voucherIndex, vouchers, us
     });
 
     if (result.success) {
-        voucher.isRedeemed = true;
-        voucher.redeemedBy = userId;
-        voucher.redeemedAt = new Date().toISOString();
-        voucher.redeemedForLicenseId = result.license.id;
-        voucher.redeemAction = 'create';
-        vouchers[voucherIndex] = voucher;
-        await saveVouchers(vouchers);
+        // Re-read vouchers to avoid race condition
+        const freshVouchers = await getVouchers();
+        const freshIdx = freshVouchers.findIndex(v => v.code === voucher.code);
+        if (freshIdx === -1 || freshVouchers[freshIdx].isRedeemed) {
+            return interaction.editReply({ content: 'This voucher has already been redeemed by someone else.', components: [] });
+        }
+        freshVouchers[freshIdx].isRedeemed = true;
+        freshVouchers[freshIdx].redeemedBy = userId;
+        freshVouchers[freshIdx].redeemedAt = new Date().toISOString();
+        freshVouchers[freshIdx].redeemedForLicenseId = result.license.id;
+        freshVouchers[freshIdx].redeemAction = 'create';
+        await saveVouchers(freshVouchers);
         
         const products = await getProducts();
         const product = products.find(p => p.id === voucher.productId);

@@ -51,6 +51,7 @@ interface ColumnsOptions {
     allLicenses: License[], 
     showActions?: boolean,
     onLicenseClick?: (key: string) => void;
+    onCopyLicenseKey?: (key: string) => void;
 }
 
 function getStatusBadge(license: License) {
@@ -64,7 +65,7 @@ function getStatusBadge(license: License) {
   return <Badge variant="success">Active</Badge>;
 }
 
-export const getColumns = ({ products, allLicenses, showActions, onLicenseClick }: ColumnsOptions): ColumnDef<EnrichedLicense>[] => [
+export const getColumns = ({ products, allLicenses, showActions, onLicenseClick, onCopyLicenseKey }: ColumnsOptions): ColumnDef<EnrichedLicense>[] => [
   ...(showActions ? [{
     id: "actions",
     cell: function ActionsCell({ row }: { row: { original: License } }) {
@@ -174,7 +175,6 @@ export const getColumns = ({ products, allLicenses, showActions, onLicenseClick 
     accessorKey: "key",
     header: "License Key",
     cell: ({ row }) => {
-      const { toast } = useToast();
       const key = row.getValue("key") as string;
 
       if (onLicenseClick) {
@@ -193,8 +193,7 @@ export const getColumns = ({ products, allLicenses, showActions, onLicenseClick 
           variant="link"
           className="p-0 font-mono text-xs"
           onClick={() => {
-            navigator.clipboard.writeText(key);
-            toast({ title: "Copied!", description: "License key copied to clipboard." });
+            onCopyLicenseKey?.(key);
           }}
         >
           {key.substring(0, 12)}...
@@ -253,7 +252,20 @@ export const getColumns = ({ products, allLicenses, showActions, onLicenseClick 
 ];
 
 export function LicenseList({ licenses, products, allLicenses, isSubUserList = false, showActions = false, onLicenseClick }: { licenses: EnrichedLicense[]; products: Product[], allLicenses: License[], isSubUserList?: boolean, showActions?: boolean, onLicenseClick?: (key: string) => void; }) {
-  const columns = getColumns({ products, allLicenses, showActions: !isSubUserList && showActions, onLicenseClick });
+  const { toast } = useToast();
+
+  const handleCopyLicenseKey = (key: string) => {
+    void navigator.clipboard.writeText(key);
+    toast({ title: "Copied!", description: "License key copied to clipboard." });
+  };
+
+  const columns = getColumns({
+    products,
+    allLicenses,
+    showActions: !isSubUserList && showActions,
+    onLicenseClick,
+    onCopyLicenseKey: handleCopyLicenseKey,
+  });
   
   const filteredColumns = isSubUserList 
     ? columns.filter(c => c.id !== 'actions' && c.id !== 'usage')

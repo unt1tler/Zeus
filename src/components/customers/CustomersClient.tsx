@@ -157,7 +157,7 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
                     </div>
                   </div>
                   {customer.isOwner && (
-                    <Crown className="h-5 w-5 text-yellow-500" title="Owner" />
+                    <Crown className="h-5 w-5 text-yellow-500" aria-label="Owner" />
                   )}
                 </div>
               </CardHeader>

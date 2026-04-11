@@ -24,7 +24,8 @@ module.exports = {
             const result = await renewLicense(key, duration);
 
             if (result.success) {
-                await interaction.editReply(`License for **${result.productName}** has been successfully renewed. New expiration: ${new Date(result.license.expiresAt).toLocaleDateString()}.`);
+                const expiry = result.license.expiresAt ? new Date(result.license.expiresAt).toLocaleDateString() : 'Never (Lifetime)';
+                await interaction.editReply(`License for **${result.productName}** has been successfully renewed. New expiration: ${expiry}.`);
             } else {
                 await interaction.editReply(`Error: ${result.message || 'Failed to renew license.'}`);
             }

@@ -11,8 +11,8 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
 
         try {
-            const allLicenses = await getLicenses();
-            const allProducts = await getProducts();
+            const [allLicenses, allProducts] = await Promise.all([getLicenses(), getProducts()]);
+            const productMap = new Map(allProducts.map(p => [p.id, p]));
             
             const ownedLicenses = allLicenses.filter(l => l.discordId === user.id);
             const subUserOn = allLicenses.filter(l => (l.subUserDiscordIds || []).includes(user.id));
@@ -33,7 +33,7 @@ module.exports = {
             
             if (ownedLicenses.length > 0) {
                 const ownedValue = ownedLicenses.slice(0, 5).map(l => {
-                    const product = allProducts.find(p => p.id === l.productId);
+                    const product = productMap.get(l.productId);
                     return `**${product?.name || 'Unknown'}**: \`${l.key.substring(0,12)}...\``
                 }).join('\n');
                 embed.addFields({ name: 'Your Licenses (first 5)', value: ownedValue });

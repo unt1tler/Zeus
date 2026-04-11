@@ -1,0 +1,11 @@
+[
+  {
+    "id": "c8da2cc2-5653-409c-8f9c-a824252b63dd",
+    "name": "Hibbiscus-test",
+    "price": 0.07,
+    "imageUrl": "https://picsum.photos/seed/728a463a-5aee-4c28-899e-3a3d06a517ae/400/300",
+    "createdAt": "2026-03-01T07:22:44.450Z",
+    "hwidProtection": false,
+    "builtByBitResourceId": ""
+  }
+]

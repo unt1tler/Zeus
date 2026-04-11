@@ -1,6 +1,10 @@
 import type { SVGProps } from 'react';
 import Image from 'next/image';
 
+type ImageIconProps = {
+  className?: string;
+};
+
 export function Logo(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -21,15 +25,27 @@ export function Logo(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export function DiscordLoginIcon(props: SVGProps<SVGSVGElement>) {
+export function DiscordLoginIcon({ className }: ImageIconProps) {
     return (
-        <Image src="https://i.ibb.co/JRtVVCd0/images-2-removebg-preview.png" alt="Discord Icon" width={20} height={20} {...props} />
+        <Image
+          src="https://i.ibb.co/JRtVVCd0/images-2-removebg-preview.png"
+          alt="Discord Icon"
+          width={20}
+          height={20}
+          className={className}
+        />
     )
 }
 
-export function DiscordIcon(props: SVGProps<SVGSVGElement>) {
+export function DiscordIcon({ className }: ImageIconProps) {
     return (
-        <Image src="https://i.ibb.co/JRtVVCd0/images-2-removebg-preview.png" alt="Discord Icon" width={16} height={16} {...props} />
+        <Image
+          src="https://i.ibb.co/JRtVVCd0/images-2-removebg-preview.png"
+          alt="Discord Icon"
+          width={16}
+          height={16}
+          className={className}
+        />
     )
 }
 

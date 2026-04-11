@@ -146,10 +146,17 @@ export function CreateLicenseForm({ products, allUsers, onSuccess, initialValues
     }
 
     const payload = {
-        ...values,
-        maxIps: maxIpsValue,
-        maxHwids: selectedProduct?.hwidProtection ? (values.unlimitedHwids ? -1 : values.maxHwids) : -1,
-        subUserDiscordIds: values.subUserDiscordIds ? values.subUserDiscordIds.split(',').map(id => id.trim()).filter(id => id) : [],
+      productId: values.productId,
+      platform: values.platform,
+      platformUserId: values.platformUserId,
+      discordId: values.discordId,
+      discordUsername: values.discordUsername,
+      email: values.email,
+      subUserDiscordIds: values.subUserDiscordIds ? values.subUserDiscordIds.split(',').map(id => id.trim()).filter(id => id) : [],
+      expiresAt: values.expiresAt ? values.expiresAt.toISOString() : null,
+      maxIps: maxIpsValue,
+      maxHwids: selectedProduct?.hwidProtection ? (values.unlimitedHwids ? -1 : values.maxHwids) : -1,
+      source: "zeus" as const,
     };
 
     const result = await createLicense(payload);

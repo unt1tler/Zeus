@@ -45,10 +45,12 @@ module.exports = {
             if (duration !== 'lifetime') {
                 const amount = parseInt(duration.slice(0, -1));
                 const unit = duration.slice(-1);
+                if (!Number.isInteger(amount) || amount <= 0 || (unit !== 'm' && unit !== 'y')) {
+                    return interaction.editReply({ content: "Invalid duration format. Use '1m', '1y', 'lifetime'." });
+                }
                 const date = new Date();
                 if (unit === 'm') date.setMonth(date.getMonth() + amount);
-                else if (unit === 'y') date.setFullYear(date.getFullYear() + amount);
-                else return interaction.editReply({ content: "Invalid duration format. Use '1m', '1y', 'lifetime'." });
+                else date.setFullYear(date.getFullYear() + amount);
                 expiresAt = date.toISOString();
             }
 

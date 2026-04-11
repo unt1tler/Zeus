@@ -7,16 +7,17 @@ import { KeyRound, CheckCircle, XCircle } from "lucide-react";
 import type { License, Product, Customer } from "@/lib/types";
 
 export default async function LicensesPage() {
-  const licenses: (License & { productName: string })[] = await getLicenses().then(async (licenses) => {
-    const products = await getProducts();
-    return licenses.map((license) => {
-      const product = products.find((p) => p.id === license.productId);
-      return { ...license, productName: product?.name || "N/A" };
-    });
-  });
-  
-  const products = await getProducts();
-  const allUsers = await getAllUsers();
+  const [rawLicenses, products, allUsers] = await Promise.all([
+    getLicenses(),
+    getProducts(),
+    getAllUsers(),
+  ]);
+
+  const productMap = new Map(products.map(p => [p.id, p]));
+  const licenses = rawLicenses.map(license => ({
+    ...license,
+    productName: productMap.get(license.productId)?.name || "N/A",
+  }));
 
   const now = new Date();
   const totalLicenses = licenses.length;

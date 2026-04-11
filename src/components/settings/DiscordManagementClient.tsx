@@ -74,13 +74,12 @@ export function DiscordManagementClient({ initialSettings }: { initialSettings: 
 
   const handleSettingsUpdate = (data: z.infer<typeof settingsSchema>) => {
     startTransition(async () => {
-      const formData = new FormData();
-      formData.append('discordBot.adminIds', JSON.stringify(data.adminIds.map(id => id.value)));
-      Object.entries(data.commands).forEach(([key, value]) => {
-          formData.append(`discordBot.commands.${key}`, value ? 'on' : 'off');
+      const result = await updateSettings({
+        discordBot: {
+          adminIds: data.adminIds.map((id) => id.value),
+          commands: data.commands,
+        },
       });
-
-      const result = await updateSettings(formData);
 
       if (result.success) {
         toast({ title: "Success", description: "Discord bot settings have been saved. Restart the bot to apply command changes." });

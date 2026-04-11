@@ -67,19 +67,10 @@ export function BuiltByBitPlaceholderClient({ settings }: { settings: Settings }
 
   const handleSettingsUpdate = (data: z.infer<typeof settingsSchema>) => {
     startTransition(async () => {
-      const formData = new FormData();
-      formData.append('builtByBitPlaceholder.enabled', data.enabled ? 'on' : 'off');
-      formData.append('builtByBitPlaceholder.secret', data.secret || '');
-      formData.append('builtByBitPlaceholder.disableIpProtection', data.disableIpProtection ? 'on' : 'off');
-      formData.append('builtByBitPlaceholder.maxIps', String(data.maxIps));
-      formData.append('builtByBitPlaceholder.enableHwidProtection', data.enableHwidProtection ? 'on' : 'off');
-      formData.append('builtByBitPlaceholder.maxHwids', String(data.maxHwids));
-      
-      if (data.enabled) {
-        formData.append('builtByBitWebhookSecret.enabled', 'off');
-      }
-
-      const result = await updateSettings(formData);
+      const result = await updateSettings({
+        builtByBitPlaceholder: data,
+        ...(data.enabled ? { builtByBitWebhookSecret: { enabled: false } } : {}),
+      });
 
       if (result.success) {
         toast({ title: "Success", description: "BuiltByBit placeholder settings have been updated." });

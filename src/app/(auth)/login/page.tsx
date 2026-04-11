@@ -8,12 +8,13 @@ import { cookies } from "next/headers";
 import { LoginClient } from "./LoginClient";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
+import { verifySignedCookie } from "@/lib/auth";
 
-export default async function LoginPage({ searchParams }: { searchParams: { error?: string } }) {
-  const cookieStore = cookies();
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const cookieStore = await cookies();
   const userCookie = cookieStore.get('user');
   
-  if (userCookie) {
+  if (userCookie?.value && verifySignedCookie(userCookie.value)) {
     redirect('/client');
   }
   
@@ -25,10 +26,12 @@ export default async function LoginPage({ searchParams }: { searchParams: { erro
     notFound();
   }
   
-  const error = searchParams.error;
+  const { error } = await searchParams;
   let errorMessage: string | null = null;
   if (error === 'AccessDenied') {
       errorMessage = 'Your account has been blacklisted. Access denied.';
+  } else if (error === 'InvalidState') {
+      errorMessage = 'The Discord login session expired or was invalid. Please try again.';
   } else if (error) {
       errorMessage = 'An unknown error occurred during authentication. Please try again.';
   }

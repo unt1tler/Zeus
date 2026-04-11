@@ -246,6 +246,11 @@ export interface DashboardStats {
   dailyWebhookCreations: DailyWebhookCreationsData[];
 }
 
+export interface DashboardStatsWithData extends DashboardStats {
+  logs: ValidationLog[];
+  licenses: License[];
+}
+
 export interface BotLog {
     command: string;
     userId: string;

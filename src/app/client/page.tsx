@@ -3,15 +3,16 @@
 import { cookies } from "next/headers";
 import { redirect } from 'next/navigation';
 import type { ClientUser, License, Product, Customer } from "@/lib/types";
-import { getLicenses, getProducts, getAllUsers } from "@/lib/data";
+import { getLicenses, getProducts, getCustomerProfile } from "@/lib/data";
 import { LicenseManagementClient } from "@/components/client/LicenseManagementClient";
+import { verifySignedCookie } from "@/lib/auth";
 
 async function getClientData(userId: string) {
-    const allLicenses = await getLicenses();
-    const allProducts = await getProducts();
-    
-    const allUsers = await getAllUsers();
-    const userProfile = allUsers.find(u => u.id === userId);
+    const [allLicenses, allProducts, userProfile] = await Promise.all([
+        getLicenses(),
+        getProducts(),
+        getCustomerProfile(userId),
+    ]);
 
     const userLicenses = allLicenses.filter(
         (l) => l.discordId === userId || (l.subUserDiscordIds || []).includes(userId)
@@ -36,17 +37,15 @@ async function getClientData(userId: string) {
 
 
 export default async function ClientDashboardPage() {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const userCookie = cookieStore.get('user');
 
     if (!userCookie) {
         redirect('/login');
     }
 
-    let user: ClientUser;
-    try {
-        user = JSON.parse(userCookie.value);
-    } catch {
+    const user = verifySignedCookie(userCookie.value);
+    if (!user) {
         redirect('/login');
     }
     
@@ -70,7 +69,7 @@ export default async function ClientDashboardPage() {
             licenses={licenses} 
             products={allProducts} 
             user={user} 
-            userProfile={userProfile}
+            userProfile={userProfile ?? undefined}
             ipUsage={{ used: allUserIps.size, total: allIpSlots }} 
         />
     );

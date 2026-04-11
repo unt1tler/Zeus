@@ -1,33 +1,12 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { extractClientIp } from './lib/utils';
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const session = request.cookies.get('session');
-
   const requestHeaders = new Headers(request.headers);
-  const ip = request.ip ?? '127.0.0.1';
-  requestHeaders.set('x-forwarded-for', ip);
+  requestHeaders.set('x-zeus-client-ip', extractClientIp(request.headers));
 
-  const isApiRoute = pathname.startsWith('/api');
-  const isClientRoute = pathname.startsWith('/client') || pathname === '/login';
-  const isAdminLogin = pathname === '/admin/login';
-  const isPublicAsset = pathname.includes('.') && !pathname.startsWith('/_next');
-
-  if (isApiRoute || isClientRoute || isAdminLogin || isPublicAsset) {
-    return NextResponse.next({ request: { headers: requestHeaders } });
-  }
-
-  if (!session || session.value !== process.env.SESSION_SECRET) {
-    const loginUrl = new URL('/admin/login', request.url);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  return NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {
