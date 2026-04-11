@@ -38,6 +38,15 @@ export interface License {
   source?: 'zeus' | 'builtbybit-placeholder' | 'builtbybit-webhook';
 }
 
+export interface PlatformAccountLink {
+  platform: LicensePlatform;
+  platformUserId: string;
+  discordId: string;
+  discordUsername?: string;
+  linkedAt: string;
+  updatedAt: string;
+}
+
 export interface ValidationLog {
   id: string;
   timestamp: string;

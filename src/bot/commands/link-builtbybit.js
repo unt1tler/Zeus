@@ -7,14 +7,17 @@ const linkTokens = new Map();
 
 async function scrapeBuiltByBitProfile(builtByBitId) {
     try {
-        const response = await fetch(`https://builtbybit.com/members/${builtByBitId}/`);
+        const response = await fetch(`https://builtbybit.com/members/${builtByBitId}/`, {
+            headers: { 'User-Agent': 'Zeus BuiltByBit Link Verifier/1.0' },
+        });
         if (!response.ok) {
             return { success: false, message: 'Could not fetch BuiltByBit profile. Is the ID correct?' };
         }
         const html = await response.text();
         const $ = cheerio.load(html);
         const aboutMeText = $('.memberAboutMe').text();
-        return { success: true, aboutMe: aboutMeText };
+        const fullPageText = $('body').text();
+        return { success: true, aboutMe: aboutMeText || fullPageText };
     } catch (error) {
         console.error(`Error scraping BBB profile ${builtByBitId}:`, error);
         return { success: false, message: 'An unexpected error occurred while checking the profile.' };
@@ -83,7 +86,7 @@ module.exports = {
                 }
 
                 if (scrapeResult.aboutMe && scrapeResult.aboutMe.includes(storedToken)) {
-                    const result = await updateLicensesByPlatformId('builtbybit', storedId, i.user.id);
+                    const result = await updateLicensesByPlatformId('builtbybit', storedId, i.user.id, i.user.username);
 
                     if (result.success) {
                         const successEmbed = new EmbedBuilder()

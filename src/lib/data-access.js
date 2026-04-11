@@ -103,6 +103,44 @@ async function saveLicenses(licenses) {
   invalidateCache("licenses.json");
 }
 
+async function upsertPlatformAccountLink(platform, platformUserId, discordId, discordUsername) {
+  const normalizedPlatformUserId = String(platformUserId).trim();
+  const normalizedDiscordId = String(discordId).trim();
+  const normalizedDiscordUsername = typeof discordUsername === 'string' ? discordUsername.trim() || undefined : undefined;
+
+  return await withFileLock("platform-links.json", async () => {
+    const links = await readFile("platform-links.json", []);
+    const now = new Date().toISOString();
+    const existing = links.find(link =>
+      link.platform === platform &&
+      (String(link.platformUserId).trim() === normalizedPlatformUserId ||
+        String(link.discordId).trim() === normalizedDiscordId)
+    );
+
+    const nextLink = {
+      platform,
+      platformUserId: normalizedPlatformUserId,
+      discordId: normalizedDiscordId,
+      discordUsername: normalizedDiscordUsername,
+      linkedAt: existing?.linkedAt || now,
+      updatedAt: now,
+    };
+
+    const filteredLinks = links.filter(link =>
+      !(
+        link.platform === platform &&
+        (String(link.platformUserId).trim() === normalizedPlatformUserId ||
+          String(link.discordId).trim() === normalizedDiscordId)
+      )
+    );
+
+    filteredLinks.unshift(nextLink);
+    await writeFileAtomic("platform-links.json", filteredLinks);
+    invalidateCache("platform-links.json");
+    return nextLink;
+  });
+}
+
 async function createLicense(data) {
   return await withFileLock("licenses.json", async () => {
     const licenses = await readFile("licenses.json", []);
@@ -269,57 +307,45 @@ async function addLicenseIdentity(key, type, value) {
   });
 }
 
-async function updateLicensesByPlatformId(platform, platformUserId, discordId) {
+async function updateLicensesByPlatformId(platform, platformUserId, discordId, discordUsername) {
   if (!platform || !platformUserId || !discordId) {
     return { success: false, message: 'Missing required parameters.' };
   }
 
+  const normalizedPlatformUserId = String(platformUserId).trim();
+  const normalizedDiscordId = String(discordId).trim();
+  const normalizedDiscordUsername = typeof discordUsername === 'string' ? discordUsername.trim() || undefined : undefined;
+
+  const link = await upsertPlatformAccountLink(
+    platform,
+    normalizedPlatformUserId,
+    normalizedDiscordId,
+    normalizedDiscordUsername
+  );
+
   return await withFileLock("licenses.json", async () => {
     const licenses = await readFile("licenses.json", []);
-    const products = await getProducts();
     let updatedCount = 0;
 
-    const currentlyLinkedLicense = licenses.find(l =>
-      l.platform === platform &&
-      l.platformUserId === platformUserId &&
-      l.discordId !== discordId
-    );
-
-    if (currentlyLinkedLicense) {
-      const oldUserId = currentlyLinkedLicense.discordId;
-      for (const license of licenses) {
-        if (license.discordId === oldUserId && license.platform === platform && license.platformUserId === platformUserId) {
-          license.platformUserId = undefined;
-          license.updatedAt = new Date().toISOString();
-        }
-      }
-    }
-
-    const userProducts = new Set();
-    for (const l of licenses) {
-      if (l.platform === platform && l.platformUserId === platformUserId) {
-        const product = products.find(p => p.id === l.productId);
-        if (product?.builtByBitResourceId) userProducts.add(product.builtByBitResourceId);
-      }
-    }
-
     for (const license of licenses) {
-      const product = products.find(p => p.id === license.productId);
-      if (product?.builtByBitResourceId && userProducts.has(product.builtByBitResourceId) && license.discordId === discordId) {
-        if (license.platformUserId !== platformUserId) {
-          license.platform = platform;
-          license.platformUserId = platformUserId;
-          license.updatedAt = new Date().toISOString();
-          updatedCount++;
-        }
+      if (license.platform !== platform || String(license.platformUserId || '').trim() !== normalizedPlatformUserId) {
+        continue;
       }
+
+      const nextDiscordUsername = normalizedDiscordUsername || license.discordUsername;
+      if (license.discordId === normalizedDiscordId && license.discordUsername === nextDiscordUsername) continue;
+
+      license.discordId = normalizedDiscordId;
+      license.discordUsername = nextDiscordUsername;
+      license.updatedAt = new Date().toISOString();
+      updatedCount++;
     }
 
-    if (updatedCount > 0 || currentlyLinkedLicense) {
+    if (updatedCount > 0) {
       await writeFileAtomic("licenses.json", licenses);
       invalidateCache("licenses.json");
     }
-    return { success: true, updatedCount };
+    return { success: true, updatedCount, link };
   });
 }
 

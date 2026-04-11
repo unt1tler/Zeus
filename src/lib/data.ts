@@ -3,7 +3,7 @@
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
-import type { Product, License, ValidationLog, Settings, Blacklist, Customer, Voucher, DailyNewUsersData, NewLicenseDistributionData, DashboardStatsWithData, BotLog, DailyCommandUsage, DailyWebhookCreationsData } from "./types";
+import type { Product, License, ValidationLog, Settings, Blacklist, Customer, Voucher, DailyNewUsersData, NewLicenseDistributionData, DashboardStatsWithData, BotLog, DailyCommandUsage, DailyWebhookCreationsData, PlatformAccountLink, LicensePlatform } from "./types";
 import { unstable_noStore as noStore } from 'next/cache';
 import { subDays, startOfDay, format, eachDayOfInterval } from "date-fns";
 import { sendWebhook } from "./logging";
@@ -127,6 +127,83 @@ export async function getLicenses(options?: { filterOut?: string[] }): Promise<L
 export async function saveLicenses(licenses: License[]) {
   await withFileLock("licenses.json", () => writeFileAtomic("licenses.json", licenses));
   invalidateCache("licenses.json");
+}
+
+export async function getPlatformAccountLinks(): Promise<PlatformAccountLink[]> {
+  noStore();
+  // This file is written by the standalone bot process, so bypass the in-memory
+  // cache to avoid serving stale link state back to webhook requests.
+  return readFile<PlatformAccountLink[]>("platform-links.json", []);
+}
+
+export async function savePlatformAccountLinks(links: PlatformAccountLink[]) {
+  await withFileLock("platform-links.json", () => writeFileAtomic("platform-links.json", links));
+  invalidateCache("platform-links.json");
+}
+
+export async function findPlatformAccountLink(
+  platform: LicensePlatform,
+  platformUserId: string
+): Promise<PlatformAccountLink | null> {
+  const normalizedPlatformUserId = platformUserId.trim();
+  if (!platform || !normalizedPlatformUserId) return null;
+
+  const links = await getPlatformAccountLinks();
+  return (
+    links.find(
+      (link) =>
+        link.platform === platform &&
+        link.platformUserId.trim() === normalizedPlatformUserId
+    ) ?? null
+  );
+}
+
+export async function upsertPlatformAccountLink(input: {
+  platform: LicensePlatform;
+  platformUserId: string;
+  discordId: string;
+  discordUsername?: string;
+}): Promise<PlatformAccountLink> {
+  const normalizedPlatformUserId = input.platformUserId.trim();
+  const normalizedDiscordId = input.discordId.trim();
+  const normalizedDiscordUsername = input.discordUsername?.trim() || undefined;
+
+  return updateJsonFile<PlatformAccountLink[]>("platform-links.json", [], async (links) => {
+    const now = new Date().toISOString();
+    const existing = links.find(
+      (link) =>
+        link.platform === input.platform &&
+        (link.platformUserId.trim() === normalizedPlatformUserId ||
+          link.discordId.trim() === normalizedDiscordId)
+    );
+
+    const nextLink: PlatformAccountLink = {
+      platform: input.platform,
+      platformUserId: normalizedPlatformUserId,
+      discordId: normalizedDiscordId,
+      discordUsername: normalizedDiscordUsername,
+      linkedAt: existing?.linkedAt ?? now,
+      updatedAt: now,
+    };
+
+    const filteredLinks = links.filter(
+      (link) =>
+        !(
+          link.platform === input.platform &&
+          (link.platformUserId.trim() === normalizedPlatformUserId ||
+            link.discordId.trim() === normalizedDiscordId)
+        )
+    );
+
+    filteredLinks.unshift(nextLink);
+    return filteredLinks;
+  }).then((links) => {
+    return links.find(
+      (link) =>
+        link.platform === input.platform &&
+        link.platformUserId.trim() === normalizedPlatformUserId
+    ) as PlatformAccountLink;
+  });
 }
 
 export async function updateLicenses(updater: (licenses: License[]) => License[] | Promise<License[]>): Promise<License[]> {

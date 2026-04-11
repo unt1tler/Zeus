@@ -58,6 +58,20 @@ function mergeDeep<T>(target: T, source: DeepPartial<T>): T {
   return output as T;
 }
 
+function normalizeBuiltByBitIntegrationSettings(settings: Settings): Settings {
+  return {
+    ...settings,
+    builtByBitWebhookSecret: {
+      ...settings.builtByBitWebhookSecret,
+      secret: settings.builtByBitWebhookSecret.secret?.trim() || "",
+    },
+    builtByBitPlaceholder: {
+      ...settings.builtByBitPlaceholder,
+      secret: settings.builtByBitPlaceholder.secret?.trim() || "",
+    },
+  };
+}
+
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
@@ -443,7 +457,20 @@ export async function updateSettings(values: unknown) {
     }
 
     const currentSettings = await getSettings();
-    const newSettings = mergeDeep(currentSettings, parsedValues.data as DeepPartial<Settings>);
+    const mergedSettings = mergeDeep(currentSettings, parsedValues.data as DeepPartial<Settings>);
+    const newSettings = normalizeBuiltByBitIntegrationSettings(mergedSettings);
+
+    if (newSettings.builtByBitWebhookSecret.enabled && !newSettings.builtByBitWebhookSecret.secret) {
+      return { success: false, message: "BuiltByBit webhook mode requires a shared secret." };
+    }
+
+    if (newSettings.builtByBitPlaceholder.enabled && !newSettings.builtByBitPlaceholder.secret) {
+      return { success: false, message: "BuiltByBit placeholder mode requires a shared secret." };
+    }
+
+    if (newSettings.builtByBitWebhookSecret.enabled && newSettings.builtByBitPlaceholder.enabled) {
+      return { success: false, message: "Only one BuiltByBit automation mode can be enabled at a time." };
+    }
 
     await saveSettings(newSettings);
 

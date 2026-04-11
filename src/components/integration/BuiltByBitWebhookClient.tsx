@@ -223,7 +223,7 @@ export function BuiltByBitWebhookClient({ settings }: { settings: Settings }) {
           <div className="space-y-2">
             <h3 className="font-semibold">3. Request Body (JSON)</h3>
             <p className="text-sm text-muted-foreground">
-              You must include the `secret` in the JSON body, along with all relevant placeholders.
+              Include the `secret` in the request body along with the purchase placeholders. JSON passthrough is the recommended BuiltByBit setup for this endpoint, and `purchase_date` should be included so retries can be deduplicated safely.
             </p>
              <CodeBlock language="json" code={JSON.stringify({
               "secret": "YOUR_SHARED_SECRET_HERE",

@@ -253,6 +253,9 @@ if (data.success) {
                 <li>**Webhook URL:** Paste the URL you copied above.</li>
                 <li>**Secret Key:** Paste the secret key you configured in the settings above.</li>
             </ul>
+            <p className="text-sm text-muted-foreground">
+              BuiltByBit sends this placeholder webhook as `application/x-www-form-urlencoded` form data with fields such as `user_id`, `resource_id`, `version_id`, `version_number`, and `secret`. Your panel responds with the raw license key as plain text.
+            </p>
           </div>
           <div className="space-y-2">
             <h3 className="font-semibold">Step 3. Use the placeholder in your product</h3>
@@ -264,7 +267,7 @@ if (data.success) {
            <div className="space-y-2">
             <h3 className="font-semibold">Step 4. Automatic licence assignment</h3>
             <p className="text-sm text-muted-foreground">
-              When a user downloads your product, BuiltByBit will call your webhook. A lifetime license will be automatically generated and assigned to their BuiltByBit user ID, and the placeholder will be replaced with the real key. The user can then link their Discord account using the `/link-builtbybit` command.
+              When a user downloads your product, BuiltByBit will call your webhook. The first successful request creates a lifetime license for that BuiltByBit account, and later downloads of the same resource return the same key instead of creating duplicates. The user can link their Discord account with `/link-builtbybit`, and future webhook deliveries will stay attached to that Discord user.
             </p>
           </div>
         </CardContent>
