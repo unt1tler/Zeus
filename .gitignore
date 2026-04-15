@@ -50,3 +50,5 @@ firebase-debug.log
 firestore-debug.log
 todo.md
 /data
+data/vouchers.json
+data/logs.json
