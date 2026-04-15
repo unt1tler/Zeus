@@ -6,7 +6,7 @@ import { checkBotApiKey } from '@/lib/auth';
 export async function POST(request: Request) {
   const auth = await checkBotApiKey();
   if (!auth.authorized) {
-    return NextResponse.json({ message: auth.message }, { status: 401 });
+    return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
   try {

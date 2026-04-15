@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getProducts, saveProducts, getLicenses, saveLicenses, getSettings, saveSettings, addLog, getBlacklist, saveBlacklist, getVouchers, saveVouchers, fetchDiscordUser, updateProducts, updateLicenses } from "./data";
-import type { License, Product, Voucher, BotStatus, Settings } from "./types";
+import type { License, Product, Voucher, Settings } from "./types";
 import {
   ADMIN_SESSION_COOKIE,
   createAdminSessionCookieValue,
@@ -15,7 +15,6 @@ import {
 } from "./auth";
 import fs from "fs/promises";
 import path from "path";
-import { unstable_noStore as noStore } from 'next/cache';
 import { sendWebhook } from "./logging";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -1050,32 +1049,6 @@ export async function createVoucher(productId: string, duration: string) {
 
     revalidatePath('/licenses');
     return { success: true, voucher: newVoucher };
-}
-
-export async function getBotStatus(): Promise<BotStatus> {
-  await requireAdminSession();
-
-  noStore();
-  const settings = await getSettings();
-  if (!settings.discordBot.enabled) {
-    return { status: 'offline' };
-  }
-
-  try {
-    const response = await fetch('http://localhost:8081/status', {
-        cache: 'no-store'
-    });
-    
-    if (!response.ok) {
-        return { status: 'offline' };
-    }
-    
-    const data: BotStatus = await response.json();
-    return data;
-  
-  } catch (error) {
-    return { status: 'offline' };
-  }
 }
 
 export async function revokeVoucher(code: string) {

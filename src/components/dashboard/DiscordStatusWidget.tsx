@@ -3,11 +3,10 @@
 
 import { useState, useEffect } from "react";
 import type { BotStatus } from "@/lib/types";
-import { getBotStatus } from "@/lib/actions";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bot, AlertCircle, Play, Mic, Eye, Gamepad2 } from "lucide-react";
+import { Bot, AlertCircle, Play, Mic, Eye, Gamepad2, RefreshCw } from "lucide-react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 
 const activityIcons = {
     Playing: <Gamepad2 className="h-4 w-4 text-muted-foreground" />,
@@ -18,26 +17,110 @@ const activityIcons = {
     default: <Play className="h-4 w-4 text-muted-foreground" />,
 }
 
+async function requestBotStatus(): Promise<BotStatus | null> {
+  try {
+    const response = await fetch("/api/bot/status", {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (response.status === 401 || !response.ok) {
+      return null;
+    }
+
+    return (await response.json()) as BotStatus;
+  } catch {
+    return null;
+  }
+}
+
 export function DiscordStatusWidget({ initialStatus }: { initialStatus: BotStatus }) {
   const [botStatus, setBotStatus] = useState<BotStatus>(initialStatus);
-  const router = useRouter();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
-    const interval = setInterval(async () => {
-      const status = await getBotStatus();
-      setBotStatus(status);
-    }, 5000); // Poll every 5 seconds
+    let cancelled = false;
+    let timeoutId: number | null = null;
 
-    return () => clearInterval(interval);
-  }, [router]);
+    const refreshStatus = async () => {
+      const status = await requestBotStatus();
+      if (!status || cancelled) {
+        return;
+      }
+
+      setBotStatus(status);
+
+      if (status.status === "starting" && document.visibilityState === "visible") {
+        timeoutId = window.setTimeout(() => {
+          void refreshStatus();
+        }, 5000);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        return;
+      }
+
+      void refreshStatus();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    if (botStatus.status === "starting" && document.visibilityState === "visible") {
+      timeoutId = window.setTimeout(() => {
+        void refreshStatus();
+      }, 5000);
+    }
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+    };
+  }, [botStatus.status]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+
+    try {
+      const status = await requestBotStatus();
+      if (status) {
+        setBotStatus(status);
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
   
   const activityIcon = botStatus.presence?.activity.type ? activityIcons[botStatus.presence.activity.type] : activityIcons.default;
 
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle>Bot Status</CardTitle>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          aria-label="Refresh bot status"
+        >
+          <RefreshCw className={isRefreshing ? "animate-spin" : undefined} />
+        </Button>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex items-center gap-4">

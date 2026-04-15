@@ -1,13 +1,27 @@
 
 import { NextResponse } from 'next/server';
-import { getLicenses, saveLicenses, getProducts, fetchDiscordUser } from '@/lib/data';
+import { getLicenses, mutateLicenses, getProducts, fetchDiscordUser } from '@/lib/data';
 import { checkAdminApiKey } from '@/lib/auth';
 import type { License } from '@/lib/types';
+import { z } from 'zod';
+
+const createLicenseSchema = z.object({
+  productId: z.string().min(1),
+  discordId: z.string().regex(/^\d{15,22}$/),
+  discordUsername: z.string().trim().min(1).max(64).optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  expiresAt: z.string().datetime().optional().or(z.literal("")),
+  maxIps: z.coerce.number().int().min(-2).max(1000).default(1),
+  maxHwids: z.coerce.number().int().min(-2).max(1000).default(1),
+  platform: z.string().trim().min(1).max(64).default('custom'),
+  platformUserId: z.string().trim().max(255).optional().or(z.literal("")),
+  subUserDiscordIds: z.array(z.string().regex(/^\d{15,22}$/)).max(100).default([]),
+}).strict();
 
 export async function GET() {
   const auth = await checkAdminApiKey('getLicenses');
   if (!auth.authorized) {
-    return NextResponse.json({ message: auth.message }, { status: 401 });
+    return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
   const [licenses, products] = await Promise.all([getLicenses(), getProducts()]);
@@ -24,27 +38,28 @@ export async function GET() {
 export async function POST(request: Request) {
   const auth = await checkAdminApiKey('createLicense');
   if (!auth.authorized) {
-    return NextResponse.json({ message: auth.message }, { status: 401 });
+    return NextResponse.json({ message: auth.message }, { status: auth.status });
   }
 
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    const parsed = createLicenseSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ message: "Invalid license payload.", errors: parsed.error.flatten().fieldErrors }, { status: 400 });
+    }
+
     let {
       productId,
       discordId,
       discordUsername,
       email,
       expiresAt,
-      maxIps = 1,
-      maxHwids = 1,
-      platform = 'custom',
+      maxIps,
+      maxHwids,
+      platform,
       platformUserId,
       subUserDiscordIds,
-    } = body;
-
-    if (!productId || !discordId) {
-      return NextResponse.json({ message: "productId and discordId are required." }, { status: 400 });
-    }
+    } = parsed.data;
 
     const products = await getProducts();
     if (!products.some(p => p.id === productId)) {
@@ -56,7 +71,6 @@ export async function POST(request: Request) {
       if (user) discordUsername = user.username;
     }
 
-    const licenses = await getLicenses();
     const newLicense: License = {
       id: crypto.randomUUID(),
       key: `LF-${crypto.randomUUID().toUpperCase()}`,
@@ -66,21 +80,23 @@ export async function POST(request: Request) {
       email: email || undefined,
       platform,
       platformUserId: platformUserId || undefined,
-      subUserDiscordIds: subUserDiscordIds || [],
+      subUserDiscordIds,
       expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
       status: 'active',
       allowedIps: [],
-      maxIps: Number(maxIps),
+      maxIps,
       allowedHwids: [],
-      maxHwids: Number(maxHwids),
+      maxHwids,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       validations: 0,
       source: 'zeus',
     };
 
-    licenses.unshift(newLicense);
-    await saveLicenses(licenses);
+    await mutateLicenses((licenses) => {
+      licenses.unshift(newLicense);
+      return { data: licenses, changed: true, result: undefined };
+    });
 
     return NextResponse.json(newLicense, { status: 201 });
   } catch {

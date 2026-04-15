@@ -26,15 +26,24 @@ const locks = new Map<string, Promise<void>>();
 async function withFileLock<T>(name: string, fn: () => Promise<T>): Promise<T> {
   const prev = locks.get(name) ?? Promise.resolve();
   let release!: () => void;
-  const next = new Promise<void>(r => (release = r));
-  locks.set(name, prev.then(() => next));
-  await prev;
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const current = prev.catch(() => undefined).then(() => next);
+  locks.set(name, current);
+  await prev.catch(() => undefined);
   try {
     return await fn();
   } finally {
     release();
-    if (locks.get(name) === next) locks.delete(name);
+    if (locks.get(name) === current) {
+      locks.delete(name);
+    }
   }
+}
+
+function cloneData<T>(value: T): T {
+  return structuredClone(value);
 }
 
 async function readFile<T>(filename: string, defaultValue: T): Promise<T> {
@@ -84,16 +93,60 @@ const CACHE_TTL = 2000; // 2s
 
 function getCached<T>(key: string): T | null {
   const entry = memCache.get(key);
-  if (entry && Date.now() < entry.exp) return structuredClone(entry.data) as T;
-  return null;
+  if (!entry) {
+    return null;
+  }
+
+  if (Date.now() >= entry.exp) {
+    memCache.delete(key);
+    return null;
+  }
+
+  return cloneData(entry.data) as T;
 }
 
 function setCache(key: string, data: any) {
-  memCache.set(key, { data, exp: Date.now() + CACHE_TTL });
+  memCache.set(key, { data: cloneData(data), exp: Date.now() + CACHE_TTL });
 }
 
 function invalidateCache(key: string) {
   memCache.delete(key);
+}
+
+type JsonMutationResult<T, TResult> = {
+  data: T;
+  changed: boolean;
+  result: TResult;
+};
+
+async function mutateJsonFile<T, TResult>(
+  filename: string,
+  defaultValue: T,
+  mutator: (data: T) => JsonMutationResult<T, TResult> | Promise<JsonMutationResult<T, TResult>>,
+): Promise<TResult> {
+  return withFileLock(filename, async () => {
+    const data = await readFile<T>(filename, defaultValue);
+    const mutation = await mutator(data);
+
+    if (mutation.changed) {
+      await writeFileAtomic(filename, mutation.data);
+      invalidateCache(filename);
+    }
+
+    return mutation.result;
+  });
+}
+
+export async function mutateLicenses<TResult>(
+  mutator: (licenses: License[]) => JsonMutationResult<License[], TResult> | Promise<JsonMutationResult<License[], TResult>>,
+): Promise<TResult> {
+  return mutateJsonFile<License[], TResult>("licenses.json", [], mutator);
+}
+
+export async function mutateProducts<TResult>(
+  mutator: (products: Product[]) => JsonMutationResult<Product[], TResult> | Promise<JsonMutationResult<Product[], TResult>>,
+): Promise<TResult> {
+  return mutateJsonFile<Product[], TResult>("products.json", [], mutator);
 }
 
 export async function getProducts(): Promise<Product[]> {
@@ -102,7 +155,7 @@ export async function getProducts(): Promise<Product[]> {
   if (cached) return cached;
   const data = await readFile<Product[]>("products.json", []);
   setCache("products.json", data);
-  return data;
+  return cloneData(data);
 }
 
 export async function saveProducts(products: Product[]) {
@@ -114,12 +167,13 @@ export async function getLicenses(options?: { filterOut?: string[] }): Promise<L
   noStore();
   let licenses = getCached<License[]>("licenses.json");
   if (!licenses) {
-    licenses = await readFile<License[]>("licenses.json", []);
-    setCache("licenses.json", licenses);
+    const data = await readFile<License[]>("licenses.json", []);
+    setCache("licenses.json", data);
+    licenses = cloneData(data);
   }
   if (options?.filterOut) {
     const filterSet = new Set(options.filterOut);
-    licenses = licenses.filter(l => !filterSet.has(l.discordId));
+    licenses = licenses.filter((license) => !filterSet.has(license.discordId));
   }
   return licenses;
 }
@@ -403,7 +457,7 @@ export async function getSettings(): Promise<Settings> {
 
   mergeDefaults(settings, defaultSettings);
   setCache("settings.json", settings);
-  return settings;
+  return cloneData(settings);
 }
 
 export async function saveSettings(settings: Settings) {
@@ -417,7 +471,7 @@ export async function getBlacklist(): Promise<Blacklist> {
   if (cached) return cached;
   const data = await readFile<Blacklist>("blacklist.json", { ips: [], hwids: [], discordIds: [] });
   setCache("blacklist.json", data);
-  return data;
+  return cloneData(data);
 }
 
 export async function saveBlacklist(blacklist: Blacklist) {
@@ -540,10 +594,28 @@ export async function getDashboardStats(): Promise<DashboardStatsWithData> {
 
 const discordUserCache = new Map<string, { data: any; exp: number }>();
 const DISCORD_CACHE_TTL = 3600_000; // 1hr
+const DISCORD_CACHE_MAX = 2000;
+const DISCORD_FETCH_TIMEOUT_MS = 2000;
+
+function pruneCache(cache: Map<string, unknown>, maxSize: number) {
+  if (cache.size < maxSize) {
+    return;
+  }
+
+  const removals = Math.max(1, Math.floor(maxSize / 4));
+  let removed = 0;
+  for (const key of cache.keys()) {
+    cache.delete(key);
+    removed++;
+    if (removed >= removals) {
+      break;
+    }
+  }
+}
 
 export async function fetchDiscordUser(userId: string): Promise<any | null> {
   noStore();
-  if (!userId || userId === 'N/A' || userId === 'unlinked') return null;
+  if (!userId || userId === 'N/A' || userId === 'unlinked' || !/^\d{15,22}$/.test(userId)) return null;
 
   const token = process.env.DISCORD_BOT_TOKEN;
   if (!token) return null;
@@ -551,14 +623,21 @@ export async function fetchDiscordUser(userId: string): Promise<any | null> {
   const cached = discordUserCache.get(userId);
   if (cached && Date.now() < cached.exp) return cached.data;
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DISCORD_FETCH_TIMEOUT_MS);
+
   try {
     const response = await fetch(`https://discord.com/api/users/${userId}`, {
       headers: { Authorization: `Bot ${token}` },
-      next: { revalidate: 3600 }
+      cache: "no-store",
+      signal: controller.signal,
     });
 
     if (!response.ok) {
-      if (response.status === 404) discordUserCache.set(userId, { data: null, exp: Date.now() + DISCORD_CACHE_TTL });
+      if (response.status === 404) {
+        pruneCache(discordUserCache, DISCORD_CACHE_MAX);
+        discordUserCache.set(userId, { data: null, exp: Date.now() + DISCORD_CACHE_TTL });
+      }
       return null;
     }
 
@@ -572,10 +651,13 @@ export async function fetchDiscordUser(userId: string): Promise<any | null> {
       email: userData.email || undefined,
     };
 
+    pruneCache(discordUserCache, DISCORD_CACHE_MAX);
     discordUserCache.set(userId, { data: user, exp: Date.now() + DISCORD_CACHE_TTL });
     return user;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

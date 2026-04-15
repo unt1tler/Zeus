@@ -1,14 +1,13 @@
 
-
 import { getDashboardStats, getSettings } from "@/lib/data";
-import { getBotStatus } from "@/lib/actions";
+import { getBotStatusSnapshot } from "@/lib/bot-status";
 import { DashboardClient } from "./DashboardClient";
 
 export default async function DashboardPage() {
   const [{ logs: allLogs, licenses: allLicenses, ...stats }, settings, botStatus] = await Promise.all([
     getDashboardStats(),
     getSettings(),
-    getBotStatus(),
+    getBotStatusSnapshot(),
   ]);
 
   return (

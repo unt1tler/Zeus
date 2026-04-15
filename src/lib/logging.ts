@@ -7,6 +7,8 @@ interface WebhookPayload {
   embeds?: Embed[];
 }
 
+const WEBHOOK_TIMEOUT_MS = 2000;
+
 export async function sendWebhook(embed: Embed, webhookConfig?: { enabled: boolean; webhookUrl: string }) {
   const config = webhookConfig ?? (await getSettings()).logging;
   if (!config?.enabled || !config?.webhookUrl) return;
@@ -17,9 +19,17 @@ export async function sendWebhook(embed: Embed, webhookConfig?: { enabled: boole
     embeds: [embed],
   };
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
+
   fetch(config.webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  }).catch(() => {});
+    signal: controller.signal,
+  })
+    .catch(() => {})
+    .finally(() => {
+      clearTimeout(timeoutId);
+    });
 }

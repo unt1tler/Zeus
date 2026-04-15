@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
-import { getLicenses, saveLicenses, addLog, getProducts, getBlacklist, getSettings, fetchDiscordUser } from "@/lib/data";
+import { mutateLicenses, addLog, getProducts, getBlacklist, getSettings, fetchDiscordUser } from "@/lib/data";
 import { extractClientIp as extractTrustedClientIp, normalizeIp } from "@/lib/utils";
-import type { ValidationLog } from "@/lib/types";
+import type { License, Product, ValidationLog } from "@/lib/types";
 
 const DISCORD_ID_RE = /^\d{15,22}$/;
 const MAX_KEY_LEN = 128;
@@ -95,10 +95,10 @@ function extractClientIp(request: NextRequest): string {
   return extractTrustedClientIp(request.headers, { trustInternalHeader: true });
 }
 
-type LogDetails = Omit<ValidationLog, "id" | "timestamp" | "location">;
+type LogDetails = Omit<ValidationLog, "id" | "timestamp" | "location" | "status" | "reason">;
 
 function logFireAndForget(
-  details: LogDetails,
+  details: LogDetails & Pick<ValidationLog, "status"> & Partial<Pick<ValidationLog, "reason">>,
   locPromise: Promise<ValidationLog["location"] | null>
 ) {
   const ts = new Date().toISOString();
@@ -110,6 +110,22 @@ function logFireAndForget(
 function fail(msg: string, status: number) {
   return NextResponse.json({ success: false, status: "failure", message: msg }, { status });
 }
+
+type ValidationFailureResult = {
+  ok: false;
+  status: number;
+  message: string;
+  reason: string;
+  logDetails: LogDetails;
+};
+
+type ValidationSuccessResult = {
+  ok: true;
+  license: License;
+  product: Product;
+  logDetails: LogDetails;
+  needsUsernameBackfill: boolean;
+};
 
 
 export async function POST(request: NextRequest) {
@@ -136,9 +152,10 @@ export async function POST(request: NextRequest) {
       return fail("Invalid discordId format.", 400);
     }
 
-    const [blacklist, settings, licenses, products] = await Promise.all([
-      getBlacklist(), getSettings(), getLicenses(), getProducts()
+    const [blacklist, settings, products] = await Promise.all([
+      getBlacklist(), getSettings(), getProducts()
     ]);
+    const productMap = new Map(products.map((product) => [product.id, product]));
 
     const locationPromise = getLocation(ip);
 
@@ -173,108 +190,234 @@ export async function POST(request: NextRequest) {
       return fail("Missing discordId.", 400);
     }
 
-    const licenseIndex = licenses.findIndex(l => l.key === key);
-
-    if (licenseIndex === -1) {
-      logFireAndForget({ ...baseLogDetails, status: 'failure', reason: 'Invalid key' }, locationPromise);
-      return fail("Invalid license key.", 403);
-    }
-
-    const license = licenses[licenseIndex];
-    const product = products.find(p => p.id === license.productId);
-
-    if (!product) {
-      logFireAndForget({ ...baseLogDetails, status: 'failure', reason: 'Product not found' }, locationPromise);
-      return fail("Associated product not found.", 404);
-    }
-
-    const logDetails = {
-      licenseKey: key,
-      ipAddress: ip,
-      hwid: hwid || null,
-      productName: product.name || 'N/A',
-      discordId: requestDiscordId || license.discordId,
-    };
-
-    if (product.hwidProtection && license.maxHwids !== -2 && !hwid) {
-      logFireAndForget({ ...logDetails, status: 'failure', reason: 'HWID required but not provided' }, locationPromise);
-      return fail("This product requires a hardware ID for validation.", 403);
-    }
-
-    if (blacklistedUsers.has(license.discordId)) {
-      logFireAndForget({ ...logDetails, status: 'failure', reason: 'License owner blacklisted' }, locationPromise);
-      return fail("Access denied.", 403);
-    }
-
-    if (requestDiscordId) {
-      const isAuthorizedUser = license.discordId === requestDiscordId || (license.subUserDiscordIds || []).includes(requestDiscordId);
-      if (!isAuthorizedUser) {
-        logFireAndForget({ ...logDetails, status: 'failure', reason: 'User not authorized for this license' }, locationPromise);
-        return fail("User is not authorized for this license.", 403);
+    const validationResult = await mutateLicenses<ValidationFailureResult | ValidationSuccessResult>((licenses) => {
+      const licenseIndex = licenses.findIndex((license) => license.key === key);
+      if (licenseIndex === -1) {
+        return {
+          data: licenses,
+          changed: false,
+          result: {
+            ok: false,
+            status: 403,
+            message: "Invalid license key.",
+            reason: "Invalid key",
+            logDetails: baseLogDetails,
+          },
+        };
       }
-    }
 
-    if (license.expiresAt && new Date(license.expiresAt) < new Date()) {
-      license.status = 'expired';
-      licenses[licenseIndex] = license;
-      await saveLicenses(licenses);
-      logFireAndForget({ ...logDetails, status: 'failure', reason: 'License expired' }, locationPromise);
-      return fail("License has expired.", 403);
-    }
+      const license = licenses[licenseIndex];
+      const product = productMap.get(license.productId);
+      if (!product) {
+        return {
+          data: licenses,
+          changed: false,
+          result: {
+            ok: false,
+            status: 404,
+            message: "Associated product not found.",
+            reason: "Product not found",
+            logDetails: baseLogDetails,
+          },
+        };
+      }
 
-    if (license.status !== 'active') {
-      logFireAndForget({ ...logDetails, status: 'failure', reason: `License inactive (status: ${license.status})` }, locationPromise);
-      return fail(`License is not active. Current status: ${license.status}.`, 403);
-    }
+      const logDetails: LogDetails = {
+        licenseKey: key,
+        ipAddress: ip,
+        hwid: hwid || null,
+        productName: product.name || "N/A",
+        discordId: requestDiscordId || license.discordId,
+      };
 
-    let licenseModified = false;
-    if (license.maxIps !== -2) {
-      const normalizedAllowedIps = new Set(license.allowedIps.map(normalizeIp));
-      if (!normalizedAllowedIps.has(ip)) {
-        if (license.maxIps !== -1 && license.allowedIps.length >= license.maxIps) {
-          logFireAndForget({ ...logDetails, status: 'failure', reason: 'Max IPs reached' }, locationPromise);
-          return fail("Maximum number of IPs reached for this license.", 403);
-        }
-        if (license.maxIps !== -1) {
-          license.allowedIps.push(ip);
-          licenseModified = true;
+      if (product.hwidProtection && license.maxHwids !== -2 && !hwid) {
+        return {
+          data: licenses,
+          changed: false,
+          result: {
+            ok: false,
+            status: 403,
+            message: "This product requires a hardware ID for validation.",
+            reason: "HWID required but not provided",
+            logDetails,
+          },
+        };
+      }
+
+      if (blacklistedUsers.has(license.discordId)) {
+        return {
+          data: licenses,
+          changed: false,
+          result: {
+            ok: false,
+            status: 403,
+            message: "Access denied.",
+            reason: "License owner blacklisted",
+            logDetails,
+          },
+        };
+      }
+
+      if (requestDiscordId) {
+        const isAuthorizedUser =
+          license.discordId === requestDiscordId || (license.subUserDiscordIds || []).includes(requestDiscordId);
+        if (!isAuthorizedUser) {
+          return {
+            data: licenses,
+            changed: false,
+            result: {
+              ok: false,
+              status: 403,
+              message: "User is not authorized for this license.",
+              reason: "User not authorized for this license",
+              logDetails,
+            },
+          };
         }
       }
-    }
 
-    if (product.hwidProtection && hwid && license.maxHwids !== -2) {
-      if (license.maxHwids !== -1) {
-        if (!license.allowedHwids.includes(hwid)) {
-          if (license.allowedHwids.length >= license.maxHwids) {
-            logFireAndForget({ ...logDetails, status: 'failure', reason: 'Max HWIDs reached' }, locationPromise);
-            return fail("Maximum number of HWIDs reached for this license.", 403);
+      const now = new Date();
+      const nowIso = now.toISOString();
+      if (license.expiresAt && new Date(license.expiresAt) < now) {
+        const nextLicense =
+          license.status === "expired"
+            ? license
+            : {
+                ...license,
+                status: "expired" as const,
+                updatedAt: nowIso,
+              };
+
+        if (nextLicense !== license) {
+          licenses[licenseIndex] = nextLicense;
+        }
+
+        return {
+          data: licenses,
+          changed: nextLicense !== license,
+          result: {
+            ok: false,
+            status: 403,
+            message: "License has expired.",
+            reason: "License expired",
+            logDetails,
+          },
+        };
+      }
+
+      if (license.status !== "active") {
+        return {
+          data: licenses,
+          changed: false,
+          result: {
+            ok: false,
+            status: 403,
+            message: `License is not active. Current status: ${license.status}.`,
+            reason: `License inactive (status: ${license.status})`,
+            logDetails,
+          },
+        };
+      }
+
+      const nextLicense: License = {
+        ...license,
+        allowedIps: [...license.allowedIps],
+        allowedHwids: [...license.allowedHwids],
+        validations: (license.validations || 0) + 1,
+        updatedAt: nowIso,
+      };
+
+      if (license.maxIps !== -2) {
+        const normalizedAllowedIps = new Set(nextLicense.allowedIps.map(normalizeIp));
+        if (!normalizedAllowedIps.has(ip)) {
+          if (license.maxIps !== -1 && nextLicense.allowedIps.length >= license.maxIps) {
+            return {
+              data: licenses,
+              changed: false,
+              result: {
+                ok: false,
+                status: 403,
+                message: "Maximum number of IPs reached for this license.",
+                reason: "Max IPs reached",
+                logDetails,
+              },
+            };
           }
-          license.allowedHwids.push(hwid);
-          licenseModified = true;
+
+          if (license.maxIps !== -1) {
+            nextLicense.allowedIps.push(ip);
+          }
         }
       }
+
+      if (product.hwidProtection && hwid && license.maxHwids !== -2 && license.maxHwids !== -1) {
+        if (!nextLicense.allowedHwids.includes(hwid)) {
+          if (nextLicense.allowedHwids.length >= license.maxHwids) {
+            return {
+              data: licenses,
+              changed: false,
+              result: {
+                ok: false,
+                status: 403,
+                message: "Maximum number of HWIDs reached for this license.",
+                reason: "Max HWIDs reached",
+                logDetails,
+              },
+            };
+          }
+
+          nextLicense.allowedHwids.push(hwid);
+        }
+      }
+
+      licenses[licenseIndex] = nextLicense;
+      return {
+        data: licenses,
+        changed: true,
+        result: {
+          ok: true,
+          license: nextLicense,
+          product,
+          logDetails,
+          needsUsernameBackfill: !nextLicense.discordUsername && nextLicense.discordId !== "unlinked",
+        },
+      };
+    });
+
+    if (!validationResult.ok) {
+      logFireAndForget(
+        { ...validationResult.logDetails, status: "failure", reason: validationResult.reason },
+        locationPromise,
+      );
+      return fail(validationResult.message, validationResult.status);
     }
 
-    const needsUsernameBackfill = !license.discordUsername && license.discordId && license.discordId !== 'unlinked';
-
-    license.validations = (license.validations || 0) + 1;
-    licenses[licenseIndex] = license;
-    licenseModified = true;
-
-    if (licenseModified) await saveLicenses(licenses);
-    logFireAndForget({ ...logDetails, status: 'success' }, locationPromise);
+    const { license, product, logDetails, needsUsernameBackfill } = validationResult;
+    logFireAndForget({ ...logDetails, status: "success" }, locationPromise);
 
     if (needsUsernameBackfill) {
-      fetchDiscordUser(license.discordId).then(async user => {
-        if (user) {
-          const fresh = await getLicenses();
-          const idx = fresh.findIndex(l => l.key === key);
-          if (idx !== -1 && !fresh[idx].discordUsername) {
-            fresh[idx].discordUsername = user.username;
-            await saveLicenses(fresh);
+      void fetchDiscordUser(license.discordId)
+        .then(async (user) => {
+          if (!user) {
+            return;
           }
-        }
-      }).catch(() => {});
+
+          await mutateLicenses<void>((licenses) => {
+            const idx = licenses.findIndex((candidate) => candidate.key === key);
+            if (idx === -1 || licenses[idx].discordUsername) {
+              return { data: licenses, changed: false, result: undefined };
+            }
+
+            licenses[idx] = {
+              ...licenses[idx],
+              discordUsername: user.username,
+              updatedAt: new Date().toISOString(),
+            };
+
+            return { data: licenses, changed: true, result: undefined };
+          });
+        })
+        .catch(() => {});
     }
 
     const { validationResponse } = settings;

@@ -207,7 +207,7 @@ export async function checkAdminApiKey(endpointName?: keyof AdminApiEndpoints) {
   const rl = adminRateLimit.get(clientIp);
   if (rl && now < rl.reset) {
     if (rl.count >= ADMIN_RATE_LIMIT) {
-      return { authorized: false, message: "Rate limit exceeded." } as const;
+      return { authorized: false, status: 429, message: "Rate limit exceeded." } as const;
     }
     rl.count++;
   } else {
@@ -216,18 +216,18 @@ export async function checkAdminApiKey(endpointName?: keyof AdminApiEndpoints) {
 
   const settings = await getSettings();
   if (!settings.adminApiEnabled) {
-    return { authorized: false, message: "Admin API is disabled." } as const;
+    return { authorized: false, status: 403, message: "Admin API is disabled." } as const;
   }
 
   const apiKey = headersList.get("x-api-key");
 
   if (!apiKey || !settings.apiKey || !timingSafeCompare(apiKey, settings.apiKey)) {
-    return { authorized: false, message: "Invalid or missing API key." } as const;
+    return { authorized: false, status: 401, message: "Invalid or missing API key." } as const;
   }
 
   if (endpointName) {
     if (settings.adminApiEndpoints[endpointName] === false) {
-      return { authorized: false, message: "This endpoint is disabled." } as const;
+      return { authorized: false, status: 403, message: "This endpoint is disabled." } as const;
     }
   }
 
@@ -303,7 +303,7 @@ export async function checkBotApiKey() {
   const apiKey = headersList.get("x-api-key");
 
   if (!apiKey || !settings.apiKey || !timingSafeCompare(apiKey, settings.apiKey)) {
-    return { authorized: false, message: "Invalid or missing API key." } as const;
+    return { authorized: false, status: 401, message: "Invalid or missing API key." } as const;
   }
   return { authorized: true } as const;
 }
