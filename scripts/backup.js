@@ -13,6 +13,7 @@ const DATA_FILES = [
   'logs.json',
   'bot-logs.json',
   'vouchers.json',
+  'platform-links.json',
 ];
 
 const MAX_BACKUPS = 30;
@@ -39,7 +40,7 @@ function createBackup() {
 
   if (copiedCount === 0) {
     console.log('[Backup] No data files found to back up.');
-    fs.rmdirSync(backupDir);
+    fs.rmSync(backupDir, { recursive: true, force: true });
     return;
   }
 

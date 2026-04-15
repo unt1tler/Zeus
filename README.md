@@ -36,6 +36,8 @@ The project is intentionally simple to run. The web app is built on Next.js App 
 
 The product direction takes cues from panels like Phantom and Sun Licenses, but the implementation here is focused on a smaller operational footprint, simpler setup, and clearer extension points.
 
+Small thanks to Sun Licenses and Ember for some of the early inspiration behind the project.
+
 
 ## What Zeus Handles
 
@@ -56,13 +58,13 @@ Zeus ships as two cooperating parts:
 - A Next.js app that serves the admin dashboard, client portal, and API routes
 - A Discord bot process that handles slash commands and reports usage back to the panel
 
-When you run `npm run dev`, the startup script does three things before the web server comes up:
+When you run `bun run dev`, the supervisor script does three things before the web server comes up:
 
 1. Syncs `data/settings.json` into `src/bot/config.json`
 2. Deploys enabled guild slash commands if the bot is configured
 3. Starts the bot if `discordBot.enabled` is `true` and `DISCORD_BOT_TOKEN` is present
 
-The web app runs on port `9002` in both development and production. `npm start` also starts the bot in the background when bot configuration is present.
+The web app runs on port `9002` by default in both development and production. `bun start` starts the web server and bot as one supervised process, so shutdown and failure handling stay linked. You can override the port with `PORT`.
 
 ## Architecture Notes
 
@@ -97,7 +99,7 @@ The most important files if you are extending the project are:
 ```bash
 git clone https://github.com/unt1tler/Zeus.git
 cd Zeus
-npm install
+bun install
 ```
 
 2. Copy `.env.example` to `.env` and set the required values.
@@ -105,7 +107,7 @@ npm install
 3. Start the app.
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 4. Open `http://localhost:9002/admin/login` and sign in with `LOGIN_EMAIL` and `LOGIN_PASSWORD`.
@@ -125,6 +127,7 @@ These values are required for a usable local setup:
 These values are optional, depending on how much of the stack you want to enable:
 
 - `DISCORD_BOT_TOKEN` for the bot runtime, slash command deployment, and Discord user enrichment
+- `PORT` to run the panel and bot bridge on a port other than `9002`
 - `TRUST_X_FORWARDED_FOR=true` if you are behind a trusted reverse proxy and want the app to read `X-Forwarded-For`
 - `SESSION_COOKIE_SECURE=true|false` if you want to explicitly override secure cookie behavior
 
@@ -180,11 +183,11 @@ The admin API is guarded by `x-api-key`, rate limited, and individually switchab
 Use the standard scripts:
 
 ```bash
-npm run build
-npm start
+bun run build
+bun run start
 ```
 
-`npm run build` deploys enabled guild slash commands and then builds the Next.js app. `npm start` serves the panel on port `9002` and launches the bot if the bot is enabled and properly configured.
+`bun run build` deploys enabled guild slash commands when the bot is configured and then builds the Next.js app. `bun start` starts the panel and bot together under one supervisor process and uses port `9002` unless `PORT` is set.
 
 Before putting Zeus behind a public domain, make sure these are set correctly:
 
