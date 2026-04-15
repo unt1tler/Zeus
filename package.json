@@ -5,14 +5,12 @@
   "packageManager": "bun@1.3.9",
   "scripts": {
     "dev": "bun run scripts/serve.js dev",
-    "build": "bun run src/bot/deploy-commands.js && next build",
+    "build": "bun run scripts/build.js",
     "start": "bun run scripts/serve.js start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx --ignore-pattern .next --ignore-pattern out --ignore-pattern backups",
-    "typecheck": "tsc --noEmit --incremental false",
+    "typecheck": "next typegen && tsc --noEmit --incremental false",
     "check": "bun run typecheck && bun run lint",
     "deploy-bot-commands": "bun run src/bot/deploy-commands.js",
-    "dev:windows": "start-bot.bat",
-    "start:windows": "start-web.bat",
     "backup": "bun run scripts/backup.js"
   },
   "dependencies": {

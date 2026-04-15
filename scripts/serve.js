@@ -185,11 +185,10 @@ async function main() {
         return;
       }
 
-      console.error(`[${label}] Bot process exited with ${describeExit(code, signal)}. Stopping web server.`);
-      await shutdown({
-        origin: "bot process exit",
-        exitCode: typeof code === "number" && code !== 0 ? code : 1,
-      });
+      botProcess = null;
+      console.warn(
+        `[${label}] Bot process exited with ${describeExit(code, signal)}. The web server will continue running without Discord bot support.`,
+      );
     });
 
     botProcess.once("error", async (error) => {
@@ -197,8 +196,8 @@ async function main() {
         return;
       }
 
-      console.error(`[${label}] Failed to start bot process.`, error);
-      await shutdown({ origin: "bot process error", exitCode: 1 });
+      botProcess = null;
+      console.warn(`[${label}] Failed to start the Discord bot. The web server will continue running.`, error);
     });
   } else {
     console.log(`[${label}] Bot not started. Web server will run by itself.`);

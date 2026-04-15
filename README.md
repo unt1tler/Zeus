@@ -187,7 +187,7 @@ bun run build
 bun run start
 ```
 
-`bun run build` deploys enabled guild slash commands when the bot is configured and then builds the Next.js app. `bun start` starts the panel and bot together under one supervisor process and uses port `9002` unless `PORT` is set.
+`bun run build` attempts slash command deployment first and still completes the Next.js build if Discord credentials are missing or invalid. `bun start` starts the panel and attempts to start the bot under one supervisor process. If the bot cannot start, the panel stays online and continues running on port `9002` unless `PORT` is set.
 
 Before putting Zeus behind a public domain, make sure these are set correctly:
 
