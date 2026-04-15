@@ -4,17 +4,14 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { getSettings } from "@/lib/data";
 import { notFound, redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import { LoginClient } from "./LoginClient";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
-import { verifySignedCookie } from "@/lib/auth";
+import { getAuthenticatedClientUser } from "@/lib/auth";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const cookieStore = await cookies();
-  const userCookie = cookieStore.get('user');
-  
-  if (userCookie?.value && verifySignedCookie(userCookie.value)) {
+  const user = await getAuthenticatedClientUser();
+  if (user) {
     redirect('/client');
   }
   

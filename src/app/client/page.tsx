@@ -1,11 +1,8 @@
 "use server"
 
-import { cookies } from "next/headers";
-import { redirect } from 'next/navigation';
-import type { ClientUser, License, Product, Customer } from "@/lib/types";
 import { getLicenses, getProducts, getCustomerProfile } from "@/lib/data";
 import { LicenseManagementClient } from "@/components/client/LicenseManagementClient";
-import { verifySignedCookie } from "@/lib/auth";
+import { requireAuthenticatedClientUser } from "@/lib/auth";
 
 async function getClientData(userId: string) {
     const [allLicenses, allProducts, userProfile] = await Promise.all([
@@ -21,35 +18,42 @@ async function getClientData(userId: string) {
     const enrichedLicenses = userLicenses.map(l => {
         const product = allProducts.find(p => p.id === l.productId);
         return {
-            ...l,
+            key: l.key,
+            productId: l.productId,
+            expiresAt: l.expiresAt,
+            status: l.status,
+            allowedIps: l.allowedIps,
+            maxIps: l.maxIps,
+            allowedHwids: l.allowedHwids,
+            maxHwids: l.maxHwids,
+            createdAt: l.createdAt,
             productName: product?.name || 'N/A',
             productImageUrl: product?.imageUrl || `https://picsum.photos/seed/${l.productId}/400/300`,
             isOwner: l.discordId === userId,
         };
     });
 
+    const visibleProductIds = new Set(enrichedLicenses.map((license) => license.productId));
+    const clientProducts = allProducts
+      .filter((product) => visibleProductIds.has(product.id))
+      .map((product) => ({
+        id: product.id,
+        hwidProtection: product.hwidProtection,
+        builtByBitResourceId: product.builtByBitResourceId,
+      }));
+
     return { 
         licenses: enrichedLicenses, 
-        allProducts,
+        products: clientProducts,
         userProfile,
     };
 }
 
 
 export default async function ClientDashboardPage() {
-    const cookieStore = await cookies();
-    const userCookie = cookieStore.get('user');
-
-    if (!userCookie) {
-        redirect('/login');
-    }
-
-    const user = verifySignedCookie(userCookie.value);
-    if (!user) {
-        redirect('/login');
-    }
+    const user = await requireAuthenticatedClientUser();
     
-    const { licenses, allProducts, userProfile } = await getClientData(user.id);
+    const { licenses, products, userProfile } = await getClientData(user.id);
     
     const allUserIps = new Set<string>();
     licenses.forEach(license => {
@@ -67,7 +71,7 @@ export default async function ClientDashboardPage() {
     return (
         <LicenseManagementClient 
             licenses={licenses} 
-            products={allProducts} 
+            products={products} 
             user={user} 
             userProfile={userProfile ?? undefined}
             ipUsage={{ used: allUserIps.size, total: allIpSlots }} 

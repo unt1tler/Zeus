@@ -5,6 +5,8 @@ import {
   CLIENT_USER_COOKIE,
   createClientUserCookieValue,
   DISCORD_OAUTH_STATE_COOKIE,
+  getClientSessionMaxAge,
+  shouldUseSecureCookies,
   timingSafeCompare,
   verifyDiscordOAuthStateCookie,
 } from "@/lib/auth";
@@ -23,6 +25,12 @@ export async function GET(request: NextRequest) {
   const { clientId, botSecret: clientSecret } = settings.discordBot;
   const baseUrl = settings.panelUrl || fallbackBaseUrl.origin;
   const redirectUri = `${settings.panelUrl}/api/auth/discord/callback`;
+
+  if (!settings.clientPanel?.enabled) {
+    const response = NextResponse.redirect(new URL("/", baseUrl));
+    response.cookies.delete(DISCORD_OAUTH_STATE_COOKIE);
+    return response;
+  }
 
   const storedStateCookie = request.cookies.get(DISCORD_OAUTH_STATE_COOKIE)?.value;
   const storedState = storedStateCookie ? verifyDiscordOAuthStateCookie(storedStateCookie) : null;
@@ -110,9 +118,9 @@ export async function GET(request: NextRequest) {
       name: CLIENT_USER_COOKIE,
       value: signedValue,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: shouldUseSecureCookies(),
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: getClientSessionMaxAge(),
       path: '/',
     });
 

@@ -7,10 +7,11 @@ import type { License, Product, Voucher, BotStatus, Settings } from "./types";
 import {
   ADMIN_SESSION_COOKIE,
   createAdminSessionCookieValue,
+  getAuthenticatedClientUser,
   getAdminSessionMaxAge,
   requireAdminSession,
+  shouldUseSecureCookies,
   timingSafeCompare,
-  verifySignedCookie,
 } from "./auth";
 import fs from "fs/promises";
 import path from "path";
@@ -25,6 +26,12 @@ import { extractClientIp } from "./utils";
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_BLOCK_DURATION = 300_000; // 5 min
+
+const updateClientLicenseSchema = z.object({
+  key: z.string().min(1).max(128),
+  newAllowedIps: z.array(z.string().min(1).max(128)).max(256),
+  newAllowedHwids: z.array(z.string().min(1).max(512)).max(256),
+});
 
 type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends Array<infer U>
@@ -108,7 +115,7 @@ export async function login(values: z.infer<typeof loginSchema>) {
     loginAttempts.delete(ip);
     (await cookies()).set(ADMIN_SESSION_COOKIE, sessionCookieValue, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: shouldUseSecureCookies(),
       sameSite: 'lax',
       maxAge: getAdminSessionMaxAge(),
       path: '/',
@@ -388,16 +395,14 @@ export async function updateLicense(key: string, formData: FormData) {
 }
 
 export async function updateClientLicense(key: string, newAllowedIps: string[], newAllowedHwids: string[]) {
-    const cookieStore = await cookies();
-    const userCookie = cookieStore.get('user');
-
-    if (!userCookie?.value) {
-        return { success: false, message: 'Authentication required.' };
+    const parsed = updateClientLicenseSchema.safeParse({ key, newAllowedIps, newAllowedHwids });
+    if (!parsed.success) {
+        return { success: false, message: 'Invalid license update request.' };
     }
 
-    const user = verifySignedCookie(userCookie.value);
+    const user = await getAuthenticatedClientUser();
     if (!user) {
-        return { success: false, message: 'Invalid session.' };
+        return { success: false, message: 'Authentication required.' };
     }
 
     const licenses = await getLicenses();
@@ -416,17 +421,19 @@ export async function updateClientLicense(key: string, newAllowedIps: string[], 
         return { success: false, message: 'You are not authorized to modify this license.' };
     }
 
-    if (license.maxIps !== -1 && license.maxIps !== -2 && newAllowedIps.length > license.maxIps) {
-        return { success: false, message: `Cannot exceed max IP limit of ${license.maxIps}.` };
-    }
-    if (license.maxHwids !== -1 && newAllowedHwids.length > license.maxHwids) {
-        return { success: false, message: `Cannot exceed max HWID limit of ${license.maxHwids}.` };
-    }
-
+    const dedupedIps = Array.from(new Set(parsed.data.newAllowedIps));
+    const dedupedHwids = Array.from(new Set(parsed.data.newAllowedHwids));
     const currentIpSet = new Set(license.allowedIps);
     const currentHwidSet = new Set(license.allowedHwids);
-    const filteredIps = newAllowedIps.filter(ip => currentIpSet.has(ip));
-    const filteredHwids = newAllowedHwids.filter(hwid => currentHwidSet.has(hwid));
+    const filteredIps = license.maxIps === -2 ? [] : dedupedIps.filter(ip => currentIpSet.has(ip));
+    const filteredHwids = license.maxHwids === -2 ? [] : dedupedHwids.filter(hwid => currentHwidSet.has(hwid));
+
+    if (license.maxIps !== -1 && license.maxIps !== -2 && filteredIps.length > license.maxIps) {
+        return { success: false, message: `Cannot exceed max IP limit of ${license.maxIps}.` };
+    }
+    if (license.maxHwids !== -1 && license.maxHwids !== -2 && filteredHwids.length > license.maxHwids) {
+        return { success: false, message: `Cannot exceed max HWID limit of ${license.maxHwids}.` };
+    }
 
     license.allowedIps = filteredIps;
     license.allowedHwids = filteredHwids;

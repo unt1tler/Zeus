@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo, useTransition } from "react";
-import type { ClientUser, License, Product, Customer } from "@/lib/types";
+import type { ClientUser, Product, Customer } from "@/lib/types";
 import {
   Dialog,
   DialogContent,
@@ -31,7 +31,18 @@ import { updateClientLicense } from "@/lib/actions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Label } from "../ui/label";
 
-interface EnrichedLicense extends License {
+type ClientProductSummary = Pick<Product, "id" | "hwidProtection" | "builtByBitResourceId">;
+
+interface EnrichedLicense {
+  key: string;
+  productId: string;
+  expiresAt: string | null;
+  status: "active" | "inactive" | "expired";
+  allowedIps: string[];
+  maxIps: number;
+  allowedHwids: string[];
+  maxHwids: number;
+  createdAt: string;
   productName: string;
   productImageUrl: string;
   isOwner: boolean;
@@ -44,7 +55,7 @@ function ManageLicenseDialog({
   onClose,
 }: {
   license: EnrichedLicense;
-  product: Product | undefined;
+  product: ClientProductSummary | undefined;
   isOpen: boolean;
   onClose: () => void;
 }) {
@@ -236,7 +247,7 @@ function ManageLicenseDialog({
 
 interface LicenseManagementClientProps {
   licenses: EnrichedLicense[];
-  products: Product[];
+  products: ClientProductSummary[];
   user: ClientUser;
   userProfile?: Customer;
   ipUsage: { used: number; total: number };

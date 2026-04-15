@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { getSettings } from "./data";
+import { getBlacklist, getSettings } from "./data";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { AdminApiEndpoints, ClientUser } from "./types";
@@ -10,11 +10,20 @@ export const CLIENT_USER_COOKIE = "user";
 export const DISCORD_OAUTH_STATE_COOKIE = "discord_oauth_state";
 
 const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+const CLIENT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 const DISCORD_OAUTH_STATE_MAX_AGE_SECONDS = 60 * 10;
 
 type AdminSessionPayload = {
   type: "admin_session";
   sessionId: string;
+  issuedAt: number;
+  expiresAt: number;
+};
+
+type ClientSessionPayload = {
+  type: "client_session";
+  sessionId: string;
+  user: ClientUser;
   issuedAt: number;
   expiresAt: number;
 };
@@ -28,6 +37,17 @@ type OAuthStatePayload = {
 
 function getSessionSecret(): string | null {
   return process.env.SESSION_SECRET ?? null;
+}
+
+export function shouldUseSecureCookies(): boolean {
+  const override = process.env.SESSION_COOKIE_SECURE?.trim().toLowerCase();
+  if (override === "0" || override === "false" || override === "no") {
+    return false;
+  }
+  if (override === "1" || override === "true" || override === "yes") {
+    return true;
+  }
+  return process.env.NODE_ENV === "production";
 }
 
 function encodePayload(payload: string): string {
@@ -100,6 +120,19 @@ function isClientUser(value: unknown): value is ClientUser {
   return typeof candidate.id === "string" && typeof candidate.username === "string";
 }
 
+function isClientSessionPayload(value: unknown): value is ClientSessionPayload {
+  if (!value || typeof value !== "object") return false;
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.type === "client_session" &&
+    typeof candidate.sessionId === "string" &&
+    typeof candidate.issuedAt === "number" &&
+    typeof candidate.expiresAt === "number" &&
+    isClientUser(candidate.user)
+  );
+}
+
 function isAdminSessionPayload(value: unknown): value is AdminSessionPayload {
   if (!value || typeof value !== "object") return false;
 
@@ -125,7 +158,14 @@ function isOAuthStatePayload(value: unknown): value is OAuthStatePayload {
 }
 
 export function createClientUserCookieValue(user: ClientUser): string | null {
-  return createSignedJsonValue(user);
+  const now = Date.now();
+  return createSignedJsonValue({
+    type: "client_session",
+    sessionId: crypto.randomUUID(),
+    user,
+    issuedAt: now,
+    expiresAt: now + CLIENT_SESSION_MAX_AGE_SECONDS * 1000,
+  } satisfies ClientSessionPayload);
 }
 
 export function createAdminSessionCookieValue(): string | null {
@@ -195,7 +235,10 @@ export async function checkAdminApiKey(endpointName?: keyof AdminApiEndpoints) {
 }
 
 export function verifySignedCookie(cookieValue: string): ClientUser | null {
-  return parseSignedJsonValue(cookieValue, isClientUser);
+  const session = parseSignedJsonValue(cookieValue, isClientSessionPayload);
+  if (!session) return null;
+  if (session.expiresAt <= Date.now()) return null;
+  return session.user;
 }
 
 export function verifyAdminSessionCookie(cookieValue: string): AdminSessionPayload | null {
@@ -216,6 +259,34 @@ export async function getAdminSession(): Promise<AdminSessionPayload | null> {
   const sessionCookie = (await cookies()).get(ADMIN_SESSION_COOKIE);
   if (!sessionCookie?.value) return null;
   return verifyAdminSessionCookie(sessionCookie.value);
+}
+
+export async function getAuthenticatedClientUser(): Promise<ClientUser | null> {
+  const userCookie = (await cookies()).get(CLIENT_USER_COOKIE);
+  if (!userCookie?.value) return null;
+
+  const user = verifySignedCookie(userCookie.value);
+  if (!user) return null;
+
+  const settings = await getSettings();
+  if (!settings.clientPanel?.enabled) {
+    return null;
+  }
+
+  const blacklist = await getBlacklist();
+  if (blacklist.discordIds.includes(user.id)) {
+    return null;
+  }
+
+  return user;
+}
+
+export async function requireAuthenticatedClientUser(): Promise<ClientUser> {
+  const user = await getAuthenticatedClientUser();
+  if (!user) {
+    redirect("/login");
+  }
+  return user;
 }
 
 export async function requireAdminSession(): Promise<AdminSessionPayload> {
@@ -239,6 +310,10 @@ export async function checkBotApiKey() {
 
 export function getAdminSessionMaxAge(): number {
   return ADMIN_SESSION_MAX_AGE_SECONDS;
+}
+
+export function getClientSessionMaxAge(): number {
+  return CLIENT_SESSION_MAX_AGE_SECONDS;
 }
 
 export function getDiscordOAuthStateMaxAge(): number {

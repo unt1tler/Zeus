@@ -5,6 +5,7 @@ import {
   createDiscordOAuthState,
   DISCORD_OAUTH_STATE_COOKIE,
   getDiscordOAuthStateMaxAge,
+  shouldUseSecureCookies,
 } from '@/lib/auth';
 
 export async function GET() {
@@ -35,7 +36,7 @@ export async function GET() {
     name: DISCORD_OAUTH_STATE_COOKIE,
     value: cookieValue,
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: shouldUseSecureCookies(),
     sameSite: 'lax',
     maxAge: getDiscordOAuthStateMaxAge(),
     path: '/',

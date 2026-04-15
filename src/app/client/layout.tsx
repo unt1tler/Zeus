@@ -6,12 +6,11 @@ import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
 import { ClientLayoutClient } from '@/components/client/ClientLayout';
 import { getSettings } from "@/lib/data";
-import Link from "next/link";
-import { verifySignedCookie } from "@/lib/auth";
+import { CLIENT_USER_COOKIE, getAuthenticatedClientUser } from "@/lib/auth";
 
 async function handleLogout() {
   'use server';
-  (await cookies()).delete('user');
+  (await cookies()).delete(CLIENT_USER_COOKIE);
   redirect('/login');
 }
 
@@ -20,10 +19,8 @@ export default async function ClientPanelLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const cookieStore = await cookies();
-  const userCookie = cookieStore.get('user');
-
-  if (!userCookie?.value || !verifySignedCookie(userCookie.value)) {
+  if (!(await getAuthenticatedClientUser())) {
+    (await cookies()).delete(CLIENT_USER_COOKIE);
     redirect('/login');
   }
   
