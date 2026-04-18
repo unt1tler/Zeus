@@ -34,7 +34,7 @@ The project is intentionally simple to run. The web app is built on Next.js App 
 > [!NOTE]
 > Zeus is still moving quickly. If you run into a bug or an edge case, open an issue.
 
-The product direction takes cues from panels like Phantom and Sun Licenses, but the implementation here is focused on a smaller operational footprint, simpler setup, and clearer extension points.
+The product direction takes inspiration from panels like Phantom and Sun Licenses, but the implementation here is focused on a smaller operational footprint, simpler setup, and clearer extension points.
 
 Small thanks to Sun Licenses and Ember for some of the early inspiration behind the project.
 
