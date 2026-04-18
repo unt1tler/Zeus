@@ -235,4 +235,4 @@ If you are adapting Zeus to a database backed deployment, start with the data la
 
 ## Contribution
 
-Pull requests are welcome. If you are planning a larger behavioral change, open an issue first so the direction is clear before code starts moving.
+Pull requests are welcome. If you are planning a larger behavioral change, open an issue first so the direction is clear.
