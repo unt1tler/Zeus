@@ -57,7 +57,7 @@ function getEnabledCommands(config) {
 }
 
 async function deploy() {
-  syncConfig();
+  await syncConfig();
 
   let config;
   try {

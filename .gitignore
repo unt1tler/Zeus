@@ -1,8 +1,6 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-**/node_modules
+# Dependencies
+/node_modules/
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -11,44 +9,61 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# backups
-/backups/
-
-# next.js
+# Build output and caches
 /.next/
 /out/
+/build/
+/dist/
+/.turbo/
+/.vercel/
+/.genkit/
 
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
+# Runtime data
+/data/
+/backups/
+/logs/
 *.pid
 
-# debug
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Test and coverage output
+/coverage/
+/test-results/
+/playwright-report/
+
+# Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+pnpm-debug.log*
+bun-debug.log*
+firebase-debug.log
+firestore-debug.log
 
-# vercel
-.vercel
-
-# typescript
+# TypeScript and generated types
 *.tsbuildinfo
 next-env.d.ts
 
-.genkit/*
-.env*
+# Local editor and OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# firebase
-firebase-debug.log
-firestore-debug.log
+# Local secrets and certificates
+*.pem
+*.key
+*.crt
+*.p12
+
+# Scratch files
+/tmp/
+/temp/
 todo.md
-/data
-data/vouchers.json
-data/logs.json

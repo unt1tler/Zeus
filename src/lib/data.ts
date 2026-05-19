@@ -1,91 +1,32 @@
 "use server";
 
-import fs from "fs/promises";
-import path from "path";
 import crypto from "crypto";
-import type { Product, License, ValidationLog, Settings, Blacklist, Customer, Voucher, DailyNewUsersData, NewLicenseDistributionData, DashboardStatsWithData, BotLog, DailyCommandUsage, DailyWebhookCreationsData, PlatformAccountLink, LicensePlatform } from "./types";
+import type { Product, License, ValidationLog, Settings, Blacklist, Customer, Voucher, DailyNewUsersData, NewLicenseDistributionData, DashboardStatsWithData, BotLog, DailyCommandUsage, DailyWebhookCreationsData, PlatformAccountLink, LicensePlatform, StorageMigrationResult, StorageMigrationStatus } from "./types";
 import { unstable_noStore as noStore } from 'next/cache';
 import { subDays, startOfDay, format, eachDayOfInterval } from "date-fns";
 import { sendWebhook } from "./logging";
 
-const dataDir = path.join(process.cwd(), "data");
-
-let dirReady = false;
-async function ensureDir() {
-  if (dirReady) return;
-  try {
-    await fs.access(dataDir);
-  } catch {
-    await fs.mkdir(dataDir, { recursive: true });
-  }
-  dirReady = true;
-}
-
-const locks = new Map<string, Promise<void>>();
-
-async function withFileLock<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  const prev = locks.get(name) ?? Promise.resolve();
-  let release!: () => void;
-  const next = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const current = prev.catch(() => undefined).then(() => next);
-  locks.set(name, current);
-  await prev.catch(() => undefined);
-  try {
-    return await fn();
-  } finally {
-    release();
-    if (locks.get(name) === current) {
-      locks.delete(name);
-    }
-  }
-}
+const dataStore = require("./data-store");
+const { getDefaultSettings } = require("./default-settings") as {
+  getDefaultSettings: () => Settings;
+};
 
 function cloneData<T>(value: T): T {
   return structuredClone(value);
 }
 
-async function readFile<T>(filename: string, defaultValue: T): Promise<T> {
-  await ensureDir();
-  const filePath = path.join(dataDir, filename);
-  try {
-    const data = await fs.readFile(filePath, "utf-8");
-    if (!data.trim()) return defaultValue;
-    const parsed = JSON.parse(data);
-
-    if (filename === 'blacklist.json' && !parsed.discordIds) {
-      parsed.discordIds = [];
-      await writeFileAtomic(filename, parsed);
-    }
-
-    return parsed as T;
-  } catch (error: any) {
-    if (error?.code === 'ENOENT') {
-      await writeFileAtomic(filename, defaultValue);
-      return defaultValue;
-    }
-    console.error(`[CRITICAL] Failed to read/parse ${filename}:`, error);
-    return defaultValue;
-  }
+async function readDataFile<T>(filename: string, defaultValue: T): Promise<T> {
+  return dataStore.readRecord(filename, defaultValue) as Promise<T>;
 }
 
-async function writeFileAtomic<T>(filename: string, data: T): Promise<void> {
-  await ensureDir();
-  const filePath = path.join(dataDir, filename);
-  const tmpPath = `${filePath}.tmp-${process.pid}-${crypto.randomUUID()}`;
-  await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), "utf-8");
-  await fs.rename(tmpPath, filePath);
+async function writeDataFile<T>(filename: string, data: T): Promise<void> {
+  await dataStore.writeRecord(filename, data);
 }
 
-async function updateJsonFile<T>(filename: string, defaultValue: T, updater: (data: T) => T | Promise<T>): Promise<T> {
-  return withFileLock(filename, async () => {
-    const data = await readFile<T>(filename, defaultValue);
-    const updated = await updater(data);
-    await writeFileAtomic(filename, updated);
-    invalidateCache(filename);
-    return updated;
-  });
+async function updateDataFile<T>(filename: string, defaultValue: T, updater: (data: T) => T | Promise<T>): Promise<T> {
+  const updated = await dataStore.updateRecord(filename, defaultValue, updater) as T;
+  invalidateCache(filename);
+  return updated;
 }
 
 const memCache = new Map<string, { data: any; exp: number }>();
@@ -113,53 +54,82 @@ function invalidateCache(key: string) {
   memCache.delete(key);
 }
 
-type JsonMutationResult<T, TResult> = {
+function invalidateAllDataCaches() {
+  for (const collection of [
+    "settings.json",
+    "products.json",
+    "licenses.json",
+    "platform-links.json",
+    "logs.json",
+    "bot-logs.json",
+    "vouchers.json",
+    "blacklist.json",
+  ]) {
+    invalidateCache(collection);
+  }
+}
+
+export async function getStorageMigrationStatus(): Promise<StorageMigrationStatus> {
+  noStore();
+  return dataStore.getStorageMigrationStatus() as Promise<StorageMigrationStatus>;
+}
+
+export async function migrateStorageData(): Promise<StorageMigrationResult> {
+  const result = await dataStore.migrateStorageData() as StorageMigrationResult;
+  if (result.success) {
+    invalidateAllDataCaches();
+  }
+  return result;
+}
+
+type DataMutationResult<T, TResult> = {
   data: T;
   changed: boolean;
   result: TResult;
 };
 
-async function mutateJsonFile<T, TResult>(
+async function mutateDataFile<T, TResult>(
   filename: string,
   defaultValue: T,
-  mutator: (data: T) => JsonMutationResult<T, TResult> | Promise<JsonMutationResult<T, TResult>>,
+  mutator: (data: T) => DataMutationResult<T, TResult> | Promise<DataMutationResult<T, TResult>>,
 ): Promise<TResult> {
-  return withFileLock(filename, async () => {
-    const data = await readFile<T>(filename, defaultValue);
+  let changed = false;
+  const result = await dataStore.mutateRecord(filename, defaultValue, async (data: T) => {
     const mutation = await mutator(data);
+    changed = mutation.changed;
+    return mutation;
+  }) as TResult;
 
-    if (mutation.changed) {
-      await writeFileAtomic(filename, mutation.data);
-      invalidateCache(filename);
-    }
+  if (changed) {
+    invalidateCache(filename);
+  }
 
-    return mutation.result;
-  });
+  return result;
 }
 
 export async function mutateLicenses<TResult>(
-  mutator: (licenses: License[]) => JsonMutationResult<License[], TResult> | Promise<JsonMutationResult<License[], TResult>>,
+  mutator: (licenses: License[]) => DataMutationResult<License[], TResult> | Promise<DataMutationResult<License[], TResult>>,
 ): Promise<TResult> {
-  return mutateJsonFile<License[], TResult>("licenses.json", [], mutator);
+  return mutateDataFile<License[], TResult>("licenses.json", [], mutator);
 }
 
 export async function mutateProducts<TResult>(
-  mutator: (products: Product[]) => JsonMutationResult<Product[], TResult> | Promise<JsonMutationResult<Product[], TResult>>,
+  mutator: (products: Product[]) => DataMutationResult<Product[], TResult> | Promise<DataMutationResult<Product[], TResult>>,
 ): Promise<TResult> {
-  return mutateJsonFile<Product[], TResult>("products.json", [], mutator);
+  return mutateDataFile<Product[], TResult>("products.json", [], mutator);
 }
 
 export async function getProducts(): Promise<Product[]> {
   noStore();
   const cached = getCached<Product[]>("products.json");
   if (cached) return cached;
-  const data = await readFile<Product[]>("products.json", []);
+  const data = await readDataFile<Product[]>("products.json", []);
   setCache("products.json", data);
   return cloneData(data);
 }
 
 export async function saveProducts(products: Product[]) {
-  await withFileLock("products.json", () => writeFileAtomic("products.json", products));
+  await writeDataFile("products.json", products);
   invalidateCache("products.json");
 }
 
@@ -167,7 +137,7 @@ export async function getLicenses(options?: { filterOut?: string[] }): Promise<L
   noStore();
   let licenses = getCached<License[]>("licenses.json");
   if (!licenses) {
-    const data = await readFile<License[]>("licenses.json", []);
+    const data = await readDataFile<License[]>("licenses.json", []);
     setCache("licenses.json", data);
     licenses = cloneData(data);
   }
@@ -179,7 +149,7 @@ export async function getLicenses(options?: { filterOut?: string[] }): Promise<L
 }
 
 export async function saveLicenses(licenses: License[]) {
-  await withFileLock("licenses.json", () => writeFileAtomic("licenses.json", licenses));
+  await writeDataFile("licenses.json", licenses);
   invalidateCache("licenses.json");
 }
 
@@ -187,11 +157,11 @@ export async function getPlatformAccountLinks(): Promise<PlatformAccountLink[]> 
   noStore();
   // This file is written by the standalone bot process, so bypass the in-memory
   // cache to avoid serving stale link state back to webhook requests.
-  return readFile<PlatformAccountLink[]>("platform-links.json", []);
+  return readDataFile<PlatformAccountLink[]>("platform-links.json", []);
 }
 
 export async function savePlatformAccountLinks(links: PlatformAccountLink[]) {
-  await withFileLock("platform-links.json", () => writeFileAtomic("platform-links.json", links));
+  await writeDataFile("platform-links.json", links);
   invalidateCache("platform-links.json");
 }
 
@@ -222,7 +192,7 @@ export async function upsertPlatformAccountLink(input: {
   const normalizedDiscordId = input.discordId.trim();
   const normalizedDiscordUsername = input.discordUsername?.trim() || undefined;
 
-  return updateJsonFile<PlatformAccountLink[]>("platform-links.json", [], async (links) => {
+  return updateDataFile<PlatformAccountLink[]>("platform-links.json", [], async (links) => {
     const now = new Date().toISOString();
     const existing = links.find(
       (link) =>
@@ -261,44 +231,42 @@ export async function upsertPlatformAccountLink(input: {
 }
 
 export async function updateLicenses(updater: (licenses: License[]) => License[] | Promise<License[]>): Promise<License[]> {
-  return updateJsonFile<License[]>("licenses.json", [], updater);
+  return updateDataFile<License[]>("licenses.json", [], updater);
 }
 
 export async function updateProducts(updater: (products: Product[]) => Product[] | Promise<Product[]>): Promise<Product[]> {
-  return updateJsonFile<Product[]>("products.json", [], updater);
+  return updateDataFile<Product[]>("products.json", [], updater);
 }
 
 export async function getLogs(): Promise<ValidationLog[]> {
   noStore();
-  return await readFile<ValidationLog[]>("logs.json", []);
+  return await readDataFile<ValidationLog[]>("logs.json", []);
 }
 
 export async function saveLogs(logs: ValidationLog[]) {
-  await withFileLock("logs.json", () => writeFileAtomic("logs.json", logs));
+  await writeDataFile("logs.json", logs);
 }
 
 export async function addLog(log: Omit<ValidationLog, 'id'>) {
-  await withFileLock("logs.json", async () => {
-    const logs = await readFile<ValidationLog[]>("logs.json", []);
+  await updateDataFile<ValidationLog[]>("logs.json", [], (logs) => {
     logs.unshift({ ...log, id: crypto.randomUUID() });
-    await writeFileAtomic("logs.json", logs.slice(0, 2000));
+    return logs.slice(0, 2000);
   });
 }
 
 export async function getBotLogs(): Promise<BotLog[]> {
   noStore();
-  return await readFile<BotLog[]>("bot-logs.json", []);
+  return await readDataFile<BotLog[]>("bot-logs.json", []);
 }
 
 export async function saveBotLogs(logs: BotLog[]) {
-  await withFileLock("bot-logs.json", () => writeFileAtomic("bot-logs.json", logs));
+  await writeDataFile("bot-logs.json", logs);
 }
 
 export async function logBotCommand(command: string, userId: string) {
-  await withFileLock("bot-logs.json", async () => {
-    const logs = await readFile<BotLog[]>("bot-logs.json", []);
+  await updateDataFile<BotLog[]>("bot-logs.json", [], (logs) => {
     logs.unshift({ command, userId, timestamp: new Date().toISOString() });
-    await writeFileAtomic("bot-logs.json", logs.slice(0, 1000));
+    return logs.slice(0, 1000);
   });
 
   // Fire-and-forget: don't block on settings/user fetch for webhook
@@ -323,11 +291,11 @@ export async function logBotCommand(command: string, userId: string) {
 
 export async function getVouchers(): Promise<Voucher[]> {
   noStore();
-  return await readFile<Voucher[]>("vouchers.json", []);
+  return await readDataFile<Voucher[]>("vouchers.json", []);
 }
 
 export async function saveVouchers(vouchers: Voucher[]) {
-  await withFileLock("vouchers.json", () => writeFileAtomic("vouchers.json", vouchers));
+  await writeDataFile("vouchers.json", vouchers);
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -335,114 +303,9 @@ export async function getSettings(): Promise<Settings> {
   const cached = getCached<Settings>("settings.json");
   if (cached) return cached;
 
-  const defaultSettings: Settings = {
-    apiKey: "",
-    panelUrl: "",
-    adminApiEnabled: false,
-    clientPanel: {
-      enabled: false,
-      accentColor: "#3b82f6"
-    },
-    adminApiEndpoints: {
-      getLicenses: true,
-      createLicense: true,
-      updateLicense: true,
-      deleteLicense: true,
-      updateIdentities: true,
-      renewLicense: true,
-      manageTeam: true,
-      addSubUser: true,
-      removeSubUser: true,
-    },
-    validationResponse: {
-      requireDiscordId: true,
-      customSuccessMessage: {
-        enabled: true,
-        message: "License key is valid",
-      },
-      license: {
-        enabled: false,
-        fields: {
-          license_key: true,
-          status: true,
-          expires_at: true,
-          issue_date: true,
-          max_ips: true,
-          used_ips: true
-        }
-      },
-      customer: {
-        enabled: false,
-        fields: {
-          id: true,
-          discord_id: true,
-          customer_since: true
-        }
-      },
-      product: {
-        enabled: false,
-        fields: {
-          id: true,
-          name: true,
-          enabled: true
-        }
-      }
-    },
-    builtByBitWebhookSecret: {
-      enabled: false,
-      secret: "",
-      disableIpProtection: false,
-      maxIps: 1,
-      enableHwidProtection: false,
-      maxHwids: 1,
-    },
-    builtByBitPlaceholder: {
-      enabled: false,
-      secret: "",
-      disableIpProtection: false,
-      maxIps: 1,
-      enableHwidProtection: false,
-      maxHwids: 1,
-    },
-    discordBot: {
-      enabled: false,
-      clientId: "",
-      guildId: "",
-      botSecret: "",
-      adminIds: [],
-      commands: {
-        viewUser: true,
-        checkLicenses: true,
-        searchLicense: true,
-        deactivate: true,
-        createLicense: true,
-        renewLicense: true,
-        profile: true,
-        userLicenses: true,
-        manageLicense: true,
-        redeem: true,
-        linkBuiltbybit: true,
-      },
-      presence: {
-        status: 'online',
-        activity: {
-          type: 'Watching',
-          name: 'licenses',
-        }
-      }
-    },
-    logging: {
-      enabled: false,
-      webhookUrl: "",
-      logLicenseCreations: true,
-      logLicenseUpdates: true,
-      logBotCommands: true,
-      logBlacklistActions: true,
-      logBuiltByBit: true,
-    }
-  };
+  const defaultSettings = getDefaultSettings();
 
-  const settings = await readFile<Settings>("settings.json", defaultSettings);
+  const settings = await readDataFile<Settings>("settings.json", defaultSettings);
 
   const mergeDefaults = (target: any, source: any) => {
     for (const key in source) {
@@ -461,7 +324,7 @@ export async function getSettings(): Promise<Settings> {
 }
 
 export async function saveSettings(settings: Settings) {
-  await withFileLock("settings.json", () => writeFileAtomic("settings.json", settings));
+  await writeDataFile("settings.json", settings);
   invalidateCache("settings.json");
 }
 
@@ -469,13 +332,13 @@ export async function getBlacklist(): Promise<Blacklist> {
   noStore();
   const cached = getCached<Blacklist>("blacklist.json");
   if (cached) return cached;
-  const data = await readFile<Blacklist>("blacklist.json", { ips: [], hwids: [], discordIds: [] });
+  const data = await readDataFile<Blacklist>("blacklist.json", { ips: [], hwids: [], discordIds: [] });
   setCache("blacklist.json", data);
   return cloneData(data);
 }
 
 export async function saveBlacklist(blacklist: Blacklist) {
-  await withFileLock("blacklist.json", () => writeFileAtomic("blacklist.json", blacklist));
+  await writeDataFile("blacklist.json", blacklist);
   invalidateCache("blacklist.json");
 }
 

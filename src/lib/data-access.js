@@ -1,68 +1,31 @@
 /**
  * Bot-specific data access layer (CommonJS).
  *
- * This file mirrors the locking/atomic-write patterns in data.ts but is
- * kept as plain JS because the Discord bot runs as a standalone Node
- * process without the Next.js/TS build pipeline. If you change locking,
- * caching, or write logic in data.ts, apply the same change here.
+ * This file is kept as plain JS because the Discord bot runs as a standalone
+ * Node process without the Next.js/TS build pipeline.
  */
-const fs = require('fs/promises');
-const path = require('path');
 const crypto = require('crypto');
 const { addMonths, addYears } = require('date-fns');
+const dataStore = require('./data-store');
+const { getDefaultSettings } = require('./default-settings');
 
-const dataDir = path.resolve(process.cwd(), "data");
-
-const locks = new Map();
-
-async function withFileLock(name, fn) {
-  const prev = locks.get(name) || Promise.resolve();
-  let release;
-  const next = new Promise(r => (release = r));
-  locks.set(name, prev.then(() => next));
-  await prev;
-  try {
-    return await fn();
-  } finally {
-    release();
-    if (locks.get(name) === next) locks.delete(name);
-  }
+async function readDataFile(filename, defaultValue) {
+  return dataStore.readRecord(filename, defaultValue);
 }
 
-let dirReady = false;
-async function ensureDir() {
-  if (dirReady) return;
-  try {
-    await fs.access(dataDir);
-  } catch {
-    await fs.mkdir(dataDir, { recursive: true });
-  }
-  dirReady = true;
+async function writeDataFile(filename, data) {
+  await dataStore.writeRecord(filename, data);
 }
 
-async function readFile(filename, defaultValue) {
-  await ensureDir();
-  const filePath = path.join(dataDir, filename);
-  try {
-    const data = await fs.readFile(filePath, "utf-8");
-    if (!data.trim()) return defaultValue;
-    return JSON.parse(data);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      await writeFileAtomic(filename, defaultValue);
-      return defaultValue;
-    }
-    console.error(`Error reading ${filename}:`, error);
-    return defaultValue;
-  }
-}
-
-async function writeFileAtomic(filename, data) {
-  await ensureDir();
-  const filePath = path.join(dataDir, filename);
-  const tmpPath = `${filePath}.tmp-${process.pid}-${crypto.randomUUID()}`;
-  await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), "utf-8");
-  await fs.rename(tmpPath, filePath);
+async function mutateDataFile(filename, defaultValue, mutator) {
+  let changed = false;
+  const result = await dataStore.mutateRecord(filename, defaultValue, async (data) => {
+    const mutation = await mutator(data);
+    changed = mutation.changed;
+    return mutation;
+  });
+  if (changed) invalidateCache(filename);
+  return result;
 }
 
 const memCache = new Map();
@@ -85,7 +48,7 @@ function invalidateCache(key) {
 async function getProducts() {
   const cached = getCached("products.json");
   if (cached) return cached;
-  const data = await readFile("products.json", []);
+  const data = await readDataFile("products.json", []);
   setCache("products.json", data);
   return data;
 }
@@ -93,13 +56,13 @@ async function getProducts() {
 async function getLicenses() {
   const cached = getCached("licenses.json");
   if (cached) return cached;
-  const data = await readFile("licenses.json", []);
+  const data = await readDataFile("licenses.json", []);
   setCache("licenses.json", data);
   return data;
 }
 
 async function saveLicenses(licenses) {
-  await withFileLock("licenses.json", () => writeFileAtomic("licenses.json", licenses));
+  await writeDataFile("licenses.json", licenses);
   invalidateCache("licenses.json");
 }
 
@@ -108,8 +71,7 @@ async function upsertPlatformAccountLink(platform, platformUserId, discordId, di
   const normalizedDiscordId = String(discordId).trim();
   const normalizedDiscordUsername = typeof discordUsername === 'string' ? discordUsername.trim() || undefined : undefined;
 
-  return await withFileLock("platform-links.json", async () => {
-    const links = await readFile("platform-links.json", []);
+  return await mutateDataFile("platform-links.json", [], async (links) => {
     const now = new Date().toISOString();
     const existing = links.find(link =>
       link.platform === platform &&
@@ -135,15 +97,12 @@ async function upsertPlatformAccountLink(platform, platformUserId, discordId, di
     );
 
     filteredLinks.unshift(nextLink);
-    await writeFileAtomic("platform-links.json", filteredLinks);
-    invalidateCache("platform-links.json");
-    return nextLink;
+    return { data: filteredLinks, changed: true, result: nextLink };
   });
 }
 
 async function createLicense(data) {
-  return await withFileLock("licenses.json", async () => {
-    const licenses = await readFile("licenses.json", []);
+  return await mutateDataFile("licenses.json", [], async (licenses) => {
     const newLicense = {
       id: crypto.randomUUID(),
       key: `LF-${crypto.randomUUID().toUpperCase()}`,
@@ -165,67 +124,67 @@ async function createLicense(data) {
       validations: 0,
     };
     licenses.unshift(newLicense);
-    await writeFileAtomic("licenses.json", licenses);
-    invalidateCache("licenses.json");
-    return { success: true, license: newLicense };
+    return { data: licenses, changed: true, result: { success: true, license: newLicense } };
   });
 }
 
 async function updateLicenseStatus(key, status) {
-  return await withFileLock("licenses.json", async () => {
-    const licenses = await readFile("licenses.json", []);
+  return await mutateDataFile("licenses.json", [], async (licenses) => {
     const idx = licenses.findIndex(l => l.key === key);
-    if (idx === -1) return { success: false, message: "License not found." };
+    if (idx === -1) {
+      return { data: licenses, changed: false, result: { success: false, message: "License not found." } };
+    }
     licenses[idx].status = status;
     licenses[idx].updatedAt = new Date().toISOString();
-    await writeFileAtomic("licenses.json", licenses);
-    invalidateCache("licenses.json");
-    return { success: true };
+    return { data: licenses, changed: true, result: { success: true } };
   });
 }
 
 async function addSubUserToLicense(key, discordId) {
-  return await withFileLock("licenses.json", async () => {
-    const licenses = await readFile("licenses.json", []);
+  return await mutateDataFile("licenses.json", [], async (licenses) => {
     const idx = licenses.findIndex(l => l.key === key);
-    if (idx === -1) return { success: false, message: 'License not found.' };
+    if (idx === -1) {
+      return { data: licenses, changed: false, result: { success: false, message: 'License not found.' } };
+    }
     const license = licenses[idx];
-    if (license.discordId === discordId) return { success: false, message: 'User is the owner of this license.' };
+    if (license.discordId === discordId) {
+      return { data: licenses, changed: false, result: { success: false, message: 'User is the owner of this license.' } };
+    }
     if (!license.subUserDiscordIds) license.subUserDiscordIds = [];
-    if (license.subUserDiscordIds.includes(discordId)) return { success: false, message: 'User is already a sub-user on this license.' };
+    if (license.subUserDiscordIds.includes(discordId)) {
+      return { data: licenses, changed: false, result: { success: false, message: 'User is already a sub-user on this license.' } };
+    }
     license.subUserDiscordIds.push(discordId);
     license.updatedAt = new Date().toISOString();
     licenses[idx] = license;
-    await writeFileAtomic("licenses.json", licenses);
-    invalidateCache("licenses.json");
-    return { success: true, license };
+    return { data: licenses, changed: true, result: { success: true, license } };
   });
 }
 
 async function removeSubUserFromLicense(key, discordId) {
-  return await withFileLock("licenses.json", async () => {
-    const licenses = await readFile("licenses.json", []);
+  return await mutateDataFile("licenses.json", [], async (licenses) => {
     const idx = licenses.findIndex(l => l.key === key);
-    if (idx === -1) return { success: false, message: 'License not found.' };
+    if (idx === -1) {
+      return { data: licenses, changed: false, result: { success: false, message: 'License not found.' } };
+    }
     const license = licenses[idx];
     if (!license.subUserDiscordIds || !license.subUserDiscordIds.includes(discordId)) {
-      return { success: false, message: 'Sub-user not found on this license.' };
+      return { data: licenses, changed: false, result: { success: false, message: 'Sub-user not found on this license.' } };
     }
     license.subUserDiscordIds = license.subUserDiscordIds.filter(id => id !== discordId);
     license.updatedAt = new Date().toISOString();
     licenses[idx] = license;
-    await writeFileAtomic("licenses.json", licenses);
-    invalidateCache("licenses.json");
-    return { success: true, license };
+    return { data: licenses, changed: true, result: { success: true, license } };
   });
 }
 
 async function renewLicense(key, duration) {
-  return await withFileLock("licenses.json", async () => {
-    const licenses = await readFile("licenses.json", []);
-    const products = await getProducts();
+  const products = await getProducts();
+  return await mutateDataFile("licenses.json", [], async (licenses) => {
     const idx = licenses.findIndex(l => l.key === key);
-    if (idx === -1) return { success: false, message: "License not found." };
+    if (idx === -1) {
+      return { data: licenses, changed: false, result: { success: false, message: "License not found." } };
+    }
 
     const license = licenses[idx];
     const product = products.find(p => p.id === license.productId);
@@ -243,67 +202,75 @@ async function renewLicense(key, duration) {
       const unit = duration.slice(-1);
       if (unit === 'm') newExpiryDate = addMonths(baseDate, amount);
       else if (unit === 'y') newExpiryDate = addYears(baseDate, amount);
-      else return { success: false, message: "Invalid duration format." };
+      else {
+        return { data: licenses, changed: false, result: { success: false, message: "Invalid duration format." } };
+      }
     }
 
     license.expiresAt = newExpiryDate ? newExpiryDate.toISOString() : null;
     license.status = 'active';
     license.updatedAt = new Date().toISOString();
     licenses[idx] = license;
-    await writeFileAtomic("licenses.json", licenses);
-    invalidateCache("licenses.json");
 
-    return { success: true, license, productName: product?.name || 'N/A' };
+    return { data: licenses, changed: true, result: { success: true, license, productName: product?.name || 'N/A' } };
   });
 }
 
 async function resetLicenseIdentities(key, type) {
-  return await withFileLock("licenses.json", async () => {
-    const licenses = await readFile("licenses.json", []);
+  return await mutateDataFile("licenses.json", [], async (licenses) => {
     const idx = licenses.findIndex(l => l.key === key);
-    if (idx === -1) return { success: false, message: 'License not found.' };
+    if (idx === -1) {
+      return { data: licenses, changed: false, result: { success: false, message: 'License not found.' } };
+    }
 
     if (type === 'ips') licenses[idx].allowedIps = [];
     else if (type === 'hwids') licenses[idx].allowedHwids = [];
-    else return { success: false, message: 'Invalid identity type.' };
+    else {
+      return { data: licenses, changed: false, result: { success: false, message: 'Invalid identity type.' } };
+    }
 
     licenses[idx].updatedAt = new Date().toISOString();
-    await writeFileAtomic("licenses.json", licenses);
-    invalidateCache("licenses.json");
-    return { success: true, license: licenses[idx] };
+    return { data: licenses, changed: true, result: { success: true, license: licenses[idx] } };
   });
 }
 
 async function addLicenseIdentity(key, type, value) {
-  return await withFileLock("licenses.json", async () => {
-    const licenses = await readFile("licenses.json", []);
+  return await mutateDataFile("licenses.json", [], async (licenses) => {
     const idx = licenses.findIndex(l => l.key === key);
-    if (idx === -1) return { success: false, message: 'License not found.' };
+    if (idx === -1) {
+      return { data: licenses, changed: false, result: { success: false, message: 'License not found.' } };
+    }
 
     const license = licenses[idx];
     if (type === 'ip') {
-      if (license.maxIps === -2) return { success: false, message: 'IP protection is disabled for this license.' };
-      if (license.maxIps !== -1 && license.allowedIps.length >= license.maxIps) {
-        return { success: false, message: 'Maximum number of IPs reached.' };
+      if (license.maxIps === -2) {
+        return { data: licenses, changed: false, result: { success: false, message: 'IP protection is disabled for this license.' } };
       }
-      if (license.allowedIps.includes(value)) return { success: false, message: 'This IP is already on the license.' };
+      if (license.maxIps !== -1 && license.allowedIps.length >= license.maxIps) {
+        return { data: licenses, changed: false, result: { success: false, message: 'Maximum number of IPs reached.' } };
+      }
+      if (license.allowedIps.includes(value)) {
+        return { data: licenses, changed: false, result: { success: false, message: 'This IP is already on the license.' } };
+      }
       license.allowedIps.push(value);
     } else if (type === 'hwid') {
-      if (license.maxHwids === -2) return { success: false, message: 'HWID protection is disabled for this license.' };
-      if (license.maxHwids !== -1 && license.allowedHwids.length >= license.maxHwids) {
-        return { success: false, message: 'Maximum number of HWIDs reached.' };
+      if (license.maxHwids === -2) {
+        return { data: licenses, changed: false, result: { success: false, message: 'HWID protection is disabled for this license.' } };
       }
-      if (license.allowedHwids.includes(value)) return { success: false, message: 'This HWID is already on the license.' };
+      if (license.maxHwids !== -1 && license.allowedHwids.length >= license.maxHwids) {
+        return { data: licenses, changed: false, result: { success: false, message: 'Maximum number of HWIDs reached.' } };
+      }
+      if (license.allowedHwids.includes(value)) {
+        return { data: licenses, changed: false, result: { success: false, message: 'This HWID is already on the license.' } };
+      }
       license.allowedHwids.push(value);
     } else {
-      return { success: false, message: 'Invalid identity type.' };
+      return { data: licenses, changed: false, result: { success: false, message: 'Invalid identity type.' } };
     }
 
     license.updatedAt = new Date().toISOString();
     licenses[idx] = license;
-    await writeFileAtomic("licenses.json", licenses);
-    invalidateCache("licenses.json");
-    return { success: true, license };
+    return { data: licenses, changed: true, result: { success: true, license } };
   });
 }
 
@@ -323,8 +290,7 @@ async function updateLicensesByPlatformId(platform, platformUserId, discordId, d
     normalizedDiscordUsername
   );
 
-  return await withFileLock("licenses.json", async () => {
-    const licenses = await readFile("licenses.json", []);
+  return await mutateDataFile("licenses.json", [], async (licenses) => {
     let updatedCount = 0;
 
     for (const license of licenses) {
@@ -341,22 +307,44 @@ async function updateLicensesByPlatformId(platform, platformUserId, discordId, d
       updatedCount++;
     }
 
-    if (updatedCount > 0) {
-      await writeFileAtomic("licenses.json", licenses);
-      invalidateCache("licenses.json");
-    }
-    return { success: true, updatedCount, link };
+    return {
+      data: licenses,
+      changed: updatedCount > 0,
+      result: { success: true, updatedCount, link },
+    };
   });
 }
 
 
-async function getVouchers() { return await readFile("vouchers.json", []); }
+async function getVouchers() { return await readDataFile("vouchers.json", []); }
 
 async function saveVouchers(vouchers) {
-  await withFileLock("vouchers.json", () => writeFileAtomic("vouchers.json", vouchers));
+  await writeDataFile("vouchers.json", vouchers);
 }
 
-async function getBlacklist() { return await readFile("blacklist.json", { ips: [], hwids: [], discordIds: [] }); }
+function mergeDefaults(target, source) {
+  for (const key of Object.keys(source)) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      if (!target[key]) target[key] = {};
+      mergeDefaults(target[key], source[key]);
+    } else if (target[key] === undefined) {
+      target[key] = source[key];
+    }
+  }
+}
+
+async function getSettings() {
+  const cached = getCached("settings.json");
+  if (cached) return cached;
+
+  const defaultSettings = getDefaultSettings();
+  const settings = await readDataFile("settings.json", defaultSettings);
+  mergeDefaults(settings, defaultSettings);
+  setCache("settings.json", settings);
+  return structuredClone(settings);
+}
+
+async function getBlacklist() { return await readDataFile("blacklist.json", { ips: [], hwids: [], discordIds: [] }); }
 
 const discordUserCache = new Map();
 const DISCORD_CACHE_TTL = 3600_000;
@@ -403,6 +391,7 @@ module.exports = {
   updateLicenseStatus,
   getVouchers,
   saveVouchers,
+  getSettings,
   getBlacklist,
   fetchDiscordUser,
   addSubUserToLicense,

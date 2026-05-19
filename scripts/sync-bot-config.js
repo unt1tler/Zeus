@@ -1,34 +1,41 @@
 
 const fs = require('fs');
 const path = require('path');
+const { getSettings } = require('../src/lib/data-access');
 
-const settingsPath = path.join(__dirname, '..', 'data', 'settings.json');
 const botConfigPath = path.join(__dirname, '..', 'src', 'bot', 'config.json');
 const dataDir = path.join(__dirname, '..', 'data');
 
-function syncConfig() {
+async function syncConfig() {
     try {
         if (!fs.existsSync(dataDir)) {
             fs.mkdirSync(dataDir, { recursive: true });
         }
-        
-        let settings = {};
-        if (fs.existsSync(settingsPath)) {
-            settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-        }
+
+        const settings = await getSettings();
 
         const botConfig = settings.discordBot || { enabled: false };
         fs.writeFileSync(botConfigPath, JSON.stringify(botConfig, null, 2));
 
+        if (process.env.DB?.toUpperCase() === 'POSTGRESQL') {
+            console.log('[Sync] PostgreSQL storage initialized and bot configuration synchronized successfully.');
+            return settings;
+        }
+
         console.log('[Sync] Bot configuration synchronized successfully.');
+        return settings;
     } catch (error) {
         console.error('[Sync] Failed to synchronize bot configuration:', error);
+        throw error;
     }
 }
 
 // Ensure this runs if the file is executed directly
 if (require.main === module) {
-    syncConfig();
+    syncConfig().catch((error) => {
+        console.error('[Sync] Fatal synchronization error:', error);
+        process.exitCode = 1;
+    });
 }
 
 

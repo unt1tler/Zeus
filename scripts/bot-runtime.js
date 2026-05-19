@@ -6,7 +6,6 @@ const syncConfig = require("./sync-bot-config");
 const projectRoot = path.join(__dirname, "..");
 const botScriptPath = path.join(projectRoot, "src", "bot", "index.js");
 const deployScriptPath = path.join(projectRoot, "src", "bot", "deploy-commands.js");
-const settingsPath = path.join(projectRoot, "data", "settings.json");
 const pidFilePath = path.join(projectRoot, "src", "bot", "bot.pid");
 const appPort = process.env.PORT?.trim() || "9002";
 const internalPanelUrl = `http://localhost:${appPort}`;
@@ -14,15 +13,6 @@ const internalPanelUrl = `http://localhost:${appPort}`;
 function removePidFile() {
   if (fs.existsSync(pidFilePath)) {
     fs.unlinkSync(pidFilePath);
-  }
-}
-
-function readSettings(label) {
-  try {
-    return JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-  } catch (error) {
-    console.log(`[${label}] Could not read settings. Bot will not be started.`, error);
-    return null;
   }
 }
 
@@ -105,10 +95,8 @@ async function deployCommands(label) {
   await waitForChildExit(child, `[${label}] Command deployment failed.`);
 }
 
-function startBotProcess({ label, detached }) {
-  syncConfig();
-
-  const settings = readSettings(label);
+async function startBotProcess({ label, detached }) {
+  const settings = await syncConfig();
   const token = process.env.DISCORD_BOT_TOKEN;
 
   if (!settings?.discordBot?.enabled || !token) {

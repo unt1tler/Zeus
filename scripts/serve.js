@@ -154,7 +154,7 @@ async function main() {
     }
   }
 
-  botProcess = startBotProcess({ label, detached: false });
+  botProcess = await startBotProcess({ label, detached: false });
   webProcess = startWebProcess();
 
   webProcess.once("exit", async (code, signal) => {

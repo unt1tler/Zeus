@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getProducts, saveProducts, getLicenses, saveLicenses, getSettings, saveSettings, addLog, getBlacklist, saveBlacklist, getVouchers, saveVouchers, fetchDiscordUser, updateProducts, updateLicenses } from "./data";
+import { getProducts, saveProducts, getLicenses, saveLicenses, getSettings, saveSettings, addLog, getBlacklist, saveBlacklist, getVouchers, saveVouchers, fetchDiscordUser, updateProducts, updateLicenses, migrateStorageData } from "./data";
 import type { License, Product, Voucher, Settings } from "./types";
 import {
   ADMIN_SESSION_COOKIE,
@@ -76,6 +76,27 @@ function normalizeBuiltByBitIntegrationSettings(settings: Settings): Settings {
       secret: settings.builtByBitPlaceholder.secret?.trim() || "",
     },
   };
+}
+
+export async function migrateActiveStorageBackend() {
+  await requireAdminSession();
+
+  try {
+    const result = await migrateStorageData();
+    revalidatePath("/", "layout");
+    revalidatePath("/licenses");
+    revalidatePath("/records");
+    revalidatePath("/customers");
+    revalidatePath("/blacklist");
+    revalidatePath("/settings");
+    revalidatePath("/integration");
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Storage migration failed.",
+    };
+  }
 }
 
 const loginSchema = z.object({

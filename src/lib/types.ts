@@ -304,3 +304,33 @@ export interface ClientUser {
     avatar?: string;
     email?: string;
 }
+
+export type StorageBackend = "json" | "postgresql";
+
+export interface StorageCollectionSummary {
+  collections: Record<string, number>;
+  totalItems: number;
+}
+
+export interface StorageMigrationStatus {
+  activeBackend: StorageBackend;
+  sourceBackend: StorageBackend;
+  direction: string;
+  available: boolean;
+  needsMigration: boolean;
+  identical: boolean;
+  sourceSummary: StorageCollectionSummary;
+  activeSummary: StorageCollectionSummary;
+  lastActiveBackend: StorageBackend | null;
+  lastMigrationAt: string | null;
+  error: string | null;
+}
+
+export interface StorageMigrationResult {
+  success: boolean;
+  message: string;
+  migrated?: boolean;
+  backupDir?: string;
+  sourceSummary?: StorageCollectionSummary;
+  destinationSummary?: StorageCollectionSummary;
+}
